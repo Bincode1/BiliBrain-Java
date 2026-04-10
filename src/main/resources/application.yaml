@@ -1,0 +1,9 @@
+spring:
+  application:
+    name: bilibrain
+
+  ai:
+    dashscope:
+      api-key:
+  profiles:
+    active: local

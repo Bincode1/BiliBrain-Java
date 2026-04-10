@@ -1,0 +1,60 @@
+# Build outputs
+target/
+build/
+
+# Maven wrapper
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE files
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+.classpath
+.project
+.settings
+.springBeans
+.sts4-cache
+.apt_generated
+.factorypath
+
+# NetBeans
+/nbproject/private/
+/nbbuild/
+/dist/
+/nbdist/
+/.nb-gradle/
+
+# Logs
+logs/
+*.log
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# OS files
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+
+# Plan directory
+plan/
+
+# Application config (keep application.yaml but ignore local configs)
+!src/main/resources/application.yaml
+src/main/resources/application-*.yaml
+
+# Maven
+.maven/
+
+# Claude Code
+.claude/
+
+# Help file
+HELP.md

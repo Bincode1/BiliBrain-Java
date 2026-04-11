@@ -42,9 +42,13 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+*.bak
+*.orig
 
 # Plan directory
 plan/
+docs/plans/
+docs/plans/*.tmp
 
 # Application config (keep application.yaml but ignore local configs)
 !src/main/resources/application.yaml
@@ -58,3 +62,30 @@ src/main/resources/application-*.yaml
 
 # Help file
 HELP.md
+
+# Local runtime data
+data/
+uploads/
+storage/
+tmp/
+temp/
+
+# SQLite / local databases
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+*.sqlite-wal
+*.sqlite-shm
+
+# Docker runtime data
+volumes/
+
+# Local tool / workspace state
+tool_workspaces/
+workspaces/
+
+# JVM / test crash dumps
+hs_err_pid*
+replay_pid*

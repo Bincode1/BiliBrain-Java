@@ -17,7 +17,8 @@ CREATE TABLE IF NOT EXISTS folders (
     title VARCHAR(512) NOT NULL,
     media_count INT NOT NULL,
     updated_at TIMESTAMP NOT NULL,
-    created_at TIMESTAMP NOT NULL
+    created_at TIMESTAMP NOT NULL,
+    INDEX idx_folders_uid (uid)
 );
 
 CREATE TABLE IF NOT EXISTS videos (
@@ -37,8 +38,6 @@ CREATE TABLE IF NOT EXISTS videos (
     audio_storage_provider VARCHAR(32),
     audio_object_key VARCHAR(1024),
     audio_uploaded_at TIMESTAMP NULL,
-    is_invalid INT NOT NULL DEFAULT 0
+    is_invalid INT NOT NULL DEFAULT 0,
+    INDEX idx_videos_folder_id (folder_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_folders_uid ON folders (uid);
-CREATE INDEX IF NOT EXISTS idx_videos_folder_id ON videos (folder_id);

@@ -7,6 +7,9 @@ spring:
       mode: always
 
 app:
+  catalog:
+    folder-list-cache-ttl-seconds: 300
+    folder-videos-cache-ttl-seconds: 300
   processing:
     max-video-minutes: 30
   storage:

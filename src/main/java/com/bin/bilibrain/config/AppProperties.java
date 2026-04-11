@@ -19,6 +19,9 @@ public class AppProperties {
     private Cors cors = new Cors();
 
     @Valid
+    private Catalog catalog = new Catalog();
+
+    @Valid
     private Bilibili bilibili = new Bilibili();
 
     @Valid
@@ -30,6 +33,15 @@ public class AppProperties {
     @Data
     public static class Cors {
         private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
+    }
+
+    @Data
+    public static class Catalog {
+        @Min(1)
+        private int folderListCacheTtlSeconds = 300;
+
+        @Min(1)
+        private int folderVideosCacheTtlSeconds = 300;
     }
 
     @Data

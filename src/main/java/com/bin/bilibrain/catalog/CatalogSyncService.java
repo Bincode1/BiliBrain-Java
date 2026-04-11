@@ -28,6 +28,7 @@ public class CatalogSyncService {
     private final VideoMapper videoMapper;
     private final AppProperties appProperties;
     private final AuthService authService;
+    private final CatalogCacheService catalogCacheService;
 
     public FolderSyncResponse syncFolders(Long requestedUid) {
         long uid = resolveUid(requestedUid);
@@ -47,6 +48,7 @@ public class CatalogSyncService {
                 "发现 " + folders.size() + " 个收藏夹。",
                 "新增 " + newFolders + " 个收藏夹，更新 " + updatedFolders + " 个收藏夹元数据。"
             );
+            catalogCacheService.markFolderListRefreshed(uid);
             return new FolderSyncResponse(uid, newFolders, updatedFolders, logs, currentStats());
         } catch (BilibiliClientException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);
@@ -85,6 +87,7 @@ public class CatalogSyncService {
             if (failedVideos > 0) {
                 logs.add("失败 " + failedVideos + " 个视频，请查看 errors。");
             }
+            catalogCacheService.markFolderVideosRefreshed(folderId);
             return new FolderVideoSyncResponse(folder.getTitle(), failedVideos, logs, errors, currentStats());
         } catch (BilibiliClientException exception) {
             throw new ResponseStatusException(HttpStatus.BAD_GATEWAY, exception.getMessage(), exception);

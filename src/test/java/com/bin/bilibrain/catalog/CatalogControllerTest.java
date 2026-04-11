@@ -61,8 +61,8 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .uid(9527L)
             .title("Java AI")
             .mediaCount(12)
-            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 0))
-            .updatedAt(LocalDateTime.of(2026, 4, 11, 11, 0))
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
             .build());
 
         videoMapper.insert(Video.builder()
@@ -71,8 +71,8 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .title("Spring AI Alibaba 入门")
             .upName("BinCode")
             .duration(620)
-            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 30))
-            .updatedAt(LocalDateTime.of(2026, 4, 11, 10, 30))
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
             .isInvalid(0)
             .build());
 
@@ -93,16 +93,16 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .uid(9527L)
             .title("Java AI")
             .mediaCount(12)
-            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 0))
-            .updatedAt(LocalDateTime.of(2026, 4, 11, 11, 0))
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
             .build());
         folderMapper.insert(Folder.builder()
             .folderId(2002L)
             .uid(10086L)
             .title("Other")
             .mediaCount(9)
-            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 0))
-            .updatedAt(LocalDateTime.of(2026, 4, 11, 11, 0))
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
             .build());
 
         when(authService.getSession()).thenReturn(new AuthSessionResponse(true, "BinCode", 9527L));
@@ -121,8 +121,8 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .uid(9527L)
             .title("BiliBrain")
             .mediaCount(1)
-            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 0))
-            .updatedAt(LocalDateTime.of(2026, 4, 11, 10, 5))
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
             .build());
 
         videoMapper.insert(Video.builder()
@@ -132,10 +132,10 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .upName("BinCode")
             .coverUrl("https://example.com/cover.jpg")
             .duration(900)
-            .publishedAt(LocalDateTime.of(2026, 4, 10, 8, 0))
-            .syncedAt(LocalDateTime.of(2026, 4, 11, 9, 0))
-            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 1))
-            .updatedAt(LocalDateTime.of(2026, 4, 11, 10, 2))
+            .publishedAt(LocalDateTime.now().minusDays(1))
+            .syncedAt(LocalDateTime.now())
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
             .isInvalid(0)
             .build());
 

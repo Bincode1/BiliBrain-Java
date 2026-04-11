@@ -8,6 +8,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.function.Supplier;
 
 @Service
@@ -50,5 +51,13 @@ public class AppStateService {
         existing.setStateValue(serializedValue);
         existing.setUpdatedAt(now);
         appStateMapper.updateById(existing);
+    }
+
+    public Optional<LocalDateTime> getUpdatedAt(String stateKey) {
+        AppStateEntity entity = appStateMapper.selectById(stateKey);
+        if (entity == null) {
+            return Optional.empty();
+        }
+        return Optional.ofNullable(entity.getUpdatedAt());
     }
 }

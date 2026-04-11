@@ -16,6 +16,7 @@ import org.springframework.web.server.ResponseStatusException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
 
 @Service
 @RequiredArgsConstructor
@@ -43,31 +44,43 @@ public class CatalogService {
     private final VideoMapper videoMapper;
     private final AppProperties appProperties;
     private final AuthService authService;
+    private final CatalogSyncService catalogSyncService;
+    private final CatalogCacheService catalogCacheService;
 
     public FolderListResponse listFolders(Long requestedUid) {
-        LambdaQueryWrapper<Folder> queryWrapper = new LambdaQueryWrapper<Folder>()
-            .orderByDesc(Folder::getMediaCount)
-            .orderByDesc(Folder::getUpdatedAt);
         Long effectiveUid = resolveRequestedUid(requestedUid);
-        queryWrapper.eq(Folder::getUid, effectiveUid);
+        List<Folder> cachedFolders = loadFolders(effectiveUid);
+        Optional<LocalDateTime> cachedAt = catalogCacheService.resolveFolderListCacheTime(effectiveUid, cachedFolders);
+        boolean hasCache = !cachedFolders.isEmpty() || cachedAt.isPresent();
 
-        List<FolderSummaryResponse> folders = folderMapper.selectList(queryWrapper)
-            .stream()
+        if (!hasCache) {
+            catalogSyncService.syncFolders(effectiveUid);
+            List<FolderSummaryResponse> freshFolders = loadFolders(effectiveUid)
+                .stream()
+                .map(this::toFolderSummary)
+                .toList();
+            return new FolderListResponse(
+                freshFolders,
+                currentStatsForFolders(freshFolders),
+                false,
+                false
+            );
+        }
+
+        boolean fresh = catalogCacheService.isFolderListFresh(cachedAt);
+        if (!fresh) {
+            catalogCacheService.scheduleFolderListRefresh(effectiveUid);
+        }
+
+        List<FolderSummaryResponse> folders = cachedFolders.stream()
             .map(this::toFolderSummary)
             .toList();
 
-        long folderCount = folders.size();
-        long videoCount = folders.isEmpty()
-            ? 0L
-            : videoMapper.selectCount(new LambdaQueryWrapper<Video>().in(
-                Video::getFolderId,
-                folders.stream().map(FolderSummaryResponse::folderId).toList()
-            ));
         return new FolderListResponse(
             folders,
-            new CatalogStatsResponse(folderCount, videoCount),
-            !folders.isEmpty(),
-            false
+            currentStatsForFolders(folders),
+            true,
+            !fresh
         );
     }
 
@@ -77,13 +90,38 @@ public class CatalogService {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "找不到这个收藏夹，请先创建或同步收藏夹。");
         }
 
-        List<VideoListItemResponse> videos = videoMapper.selectList(
+        List<Video> videosInFolder = videoMapper.selectList(
+            new LambdaQueryWrapper<Video>()
+                .eq(Video::getFolderId, folderId)
+                .orderByDesc(Video::getUpdatedAt)
+                .orderByDesc(Video::getCreatedAt)
+        );
+        Optional<LocalDateTime> cachedAt = catalogCacheService.resolveFolderVideosCacheTime(folderId, videosInFolder);
+        boolean hasCache = !videosInFolder.isEmpty() || cachedAt.isPresent();
+
+        if (!hasCache) {
+            catalogSyncService.syncFolderMetadata(folderId);
+            videosInFolder = videoMapper.selectList(
                 new LambdaQueryWrapper<Video>()
                     .eq(Video::getFolderId, folderId)
                     .orderByDesc(Video::getUpdatedAt)
                     .orderByDesc(Video::getCreatedAt)
-            )
-            .stream()
+            );
+            return new FolderVideosResponse(
+                toFolderSummary(folderMapper.selectById(folderId)),
+                VIDEO_FIELDS,
+                videosInFolder.stream().map(this::toVideoListItem).toList(),
+                false,
+                false
+            );
+        }
+
+        boolean fresh = catalogCacheService.isFolderVideosFresh(cachedAt);
+        if (!fresh) {
+            catalogCacheService.scheduleFolderVideosRefresh(folderId);
+        }
+
+        List<VideoListItemResponse> videos = videosInFolder.stream()
             .map(this::toVideoListItem)
             .toList();
 
@@ -91,9 +129,17 @@ public class CatalogService {
             toFolderSummary(folder),
             VIDEO_FIELDS,
             videos,
-            !videos.isEmpty(),
-            false
+            true,
+            !fresh
         );
+    }
+
+    private List<Folder> loadFolders(Long effectiveUid) {
+        LambdaQueryWrapper<Folder> queryWrapper = new LambdaQueryWrapper<Folder>()
+            .eq(Folder::getUid, effectiveUid)
+            .orderByDesc(Folder::getMediaCount)
+            .orderByDesc(Folder::getUpdatedAt);
+        return folderMapper.selectList(queryWrapper);
     }
 
     private FolderSummaryResponse toFolderSummary(Folder folder) {
@@ -138,6 +184,17 @@ public class CatalogService {
             new VideoPipelineStepResponse("pending", "", "", "", 0, 0),
             new VideoPipelineStepResponse("pending", "", "", "", 0, 0)
         );
+    }
+
+    private CatalogStatsResponse currentStatsForFolders(List<FolderSummaryResponse> folders) {
+        long folderCount = folders.size();
+        long videoCount = folders.isEmpty()
+            ? 0L
+            : videoMapper.selectCount(new LambdaQueryWrapper<Video>().in(
+                Video::getFolderId,
+                folders.stream().map(FolderSummaryResponse::folderId).toList()
+            ));
+        return new CatalogStatsResponse(folderCount, videoCount);
     }
 
     private String formatDateTime(LocalDateTime value) {

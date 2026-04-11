@@ -21,6 +21,9 @@ app:
   cors:
     allowed-origins:
       - http://localhost:5173
+  catalog:
+    folder-list-cache-ttl-seconds: ${FOLDER_LIST_CACHE_TTL_SECONDS:300}
+    folder-videos-cache-ttl-seconds: ${FOLDER_VIDEOS_CACHE_TTL_SECONDS:300}
   bilibili:
     uid: ${BILIBILI_UID:0}
     sessdata: ${BILIBILI_SESSDATA:}

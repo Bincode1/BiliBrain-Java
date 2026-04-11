@@ -1,15 +1,22 @@
 package com.bin.bilibrain.config;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
+import java.util.List;
+
 @Configuration
+@RequiredArgsConstructor
 public class WebConfig implements WebMvcConfigurer {
+    private final AppProperties appProperties;
+
     @Override
     public void addCorsMappings(CorsRegistry registry) {
+        List<String> allowedOrigins = appProperties.getCors().getAllowedOrigins();
         registry.addMapping("/api/**")
-            .allowedOrigins("http://localhost:5173")
+            .allowedOrigins(allowedOrigins.toArray(String[]::new))
             .allowedMethods("*")
             .allowedHeaders("*")
             .allowCredentials(true);

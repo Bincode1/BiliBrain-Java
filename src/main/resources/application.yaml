@@ -1,9 +1,55 @@
+server:
+  port: 8000
+
 spring:
   application:
     name: bilibrain
+  datasource:
+    url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:bilibrain}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
+    username: ${MYSQL_USERNAME:root}
+    password: ${MYSQL_PASSWORD:root}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+  sql:
+    init:
+      mode: always
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 100MB
 
-  ai:
-    dashscope:
-      api-key:
-  profiles:
-    active: local
+app:
+  cors:
+    allowed-origins:
+      - http://localhost:5173
+  bilibili:
+    uid: ${BILIBILI_UID:0}
+    sessdata: ${BILIBILI_SESSDATA:}
+    bili-jct: ${BILIBILI_BILI_JCT:}
+    dede-user-id: ${BILIBILI_DEDE_USER_ID:}
+  processing:
+    max-video-minutes: ${DEFAULT_MAX_VIDEO_MINUTES:30}
+    ingestion-max-concurrency: ${INGESTION_MAX_CONCURRENCY:3}
+    ingestion-poll-interval-seconds: ${INGESTION_POLL_INTERVAL_SECONDS:2}
+  storage:
+    data-dir: ${DATA_DIR:./data}
+    audio-dir: ${AUDIO_DIR:./data/audio}
+    vector-db-dir: ${VECTOR_DB_DIR:./data/vector_db}
+    upload-dir: ${UPLOAD_DIR:./uploads}
+    tools-workspace-root: ${TOOLS_WORKSPACE_ROOT:./data/tool_workspaces}
+    skills-root: ${SKILLS_ROOT:./skills}
+
+mybatis-plus:
+  mapper-locations: classpath*:/mapper/**/*.xml
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: assign_id
+      logic-delete-field: deleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+
+logging:
+  level:
+    com.bin.bilibrain: INFO

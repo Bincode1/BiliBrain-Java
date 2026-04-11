@@ -1,0 +1,28 @@
+server:
+  port: 0
+
+spring:
+  datasource:
+    url: jdbc:h2:mem:bilibrain-${random.uuid};MODE=MySQL;DB_CLOSE_DELAY=-1;DATABASE_TO_LOWER=TRUE
+    username: sa
+    password:
+    driver-class-name: org.h2.Driver
+  sql:
+    init:
+      mode: always
+
+app:
+  processing:
+    max-video-minutes: 30
+  storage:
+    data-dir: ./target/test-data
+    audio-dir: ./target/test-data/audio
+    vector-db-dir: ./target/test-data/vector_db
+    upload-dir: ./target/test-data/uploads
+    tools-workspace-root: ./target/test-data/tool_workspaces
+    skills-root: ./target/test-data/skills
+
+logging:
+  level:
+    root: WARN
+    com.bin.bilibrain: WARN

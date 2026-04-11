@@ -27,6 +27,10 @@ public abstract class AbstractMySqlIntegrationTest {
 
     @BeforeEach
     void resetDatabaseState() {
+        jdbcTemplate.execute("DELETE FROM ingestion_tasks");
+        jdbcTemplate.execute("DELETE FROM video_pipeline");
+        jdbcTemplate.execute("DELETE FROM video_summaries");
+        jdbcTemplate.execute("DELETE FROM transcripts");
         jdbcTemplate.execute("DELETE FROM app_state");
         jdbcTemplate.execute("DELETE FROM videos");
         jdbcTemplate.execute("DELETE FROM folders");

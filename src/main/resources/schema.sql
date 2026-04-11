@@ -41,3 +41,42 @@ CREATE TABLE IF NOT EXISTS videos (
     is_invalid INT NOT NULL DEFAULT 0,
     INDEX idx_videos_folder_id (folder_id)
 );
+
+CREATE TABLE IF NOT EXISTS transcripts (
+    bvid VARCHAR(32) PRIMARY KEY,
+    source_model VARCHAR(128),
+    segment_count INT NOT NULL DEFAULT 0,
+    transcript_text LONGTEXT,
+    segments_json LONGTEXT,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS video_summaries (
+    bvid VARCHAR(32) PRIMARY KEY,
+    transcript_hash VARCHAR(128),
+    summary_text LONGTEXT,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS video_pipeline (
+    bvid VARCHAR(32) PRIMARY KEY,
+    overall_status VARCHAR(32) NOT NULL,
+    state_json LONGTEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS ingestion_tasks (
+    task_id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    bvid VARCHAR(32) NOT NULL,
+    operation VARCHAR(32) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    error_msg TEXT,
+    heartbeat_at TIMESTAMP NULL,
+    started_at TIMESTAMP NULL,
+    finished_at TIMESTAMP NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    INDEX idx_ingestion_tasks_bvid_status (bvid, status),
+    INDEX idx_ingestion_tasks_status_created_at (status, created_at)
+);

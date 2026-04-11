@@ -6,6 +6,8 @@ import com.bin.bilibrain.auth.AuthSessionResponse;
 import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.entity.Folder;
 import com.bin.bilibrain.entity.Video;
+import com.bin.bilibrain.ingestion.PipelineStatusService;
+import com.bin.bilibrain.ingestion.VideoProcessSnapshot;
 import com.bin.bilibrain.mapper.FolderMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import lombok.RequiredArgsConstructor;
@@ -46,6 +48,7 @@ public class CatalogService {
     private final AuthService authService;
     private final CatalogSyncService catalogSyncService;
     private final CatalogCacheService catalogCacheService;
+    private final PipelineStatusService pipelineStatusService;
 
     public FolderListResponse listFolders(Long requestedUid) {
         Long effectiveUid = resolveRequestedUid(requestedUid);
@@ -152,7 +155,7 @@ public class CatalogService {
     }
 
     private VideoListItemResponse toVideoListItem(Video video) {
-        String syncStatus = (video.getSyncedAt() == null) ? "pending" : "indexed";
+        VideoProcessSnapshot snapshot = pipelineStatusService.getCatalogSnapshot(video);
         boolean isInvalid = video.getIsInvalid() != null && video.getIsInvalid() != 0;
         return new VideoListItemResponse(
             video.getBvid(),
@@ -163,26 +166,18 @@ public class CatalogService {
             valueOrZero(video.getDuration()),
             formatDateTime(video.getPublishedAt()),
             video.getCid(),
-            List.of(),
-            "未转写",
-            0,
-            "",
-            syncStatus,
-            0,
-            false,
+            snapshot.manualTags(),
+            defaultString(snapshot.transcriptSource()),
+            snapshot.transcriptSegmentCount(),
+            defaultString(snapshot.transcriptUpdatedAt()),
+            defaultString(snapshot.syncStatus()),
+            snapshot.chunkCount(),
+            snapshot.hasSummary(),
             formatDateTime(video.getSyncedAt()),
-            "",
+            defaultString(snapshot.errorMsg()),
             isInvalid,
             formatDateTime(video.getCreatedAt()),
-            defaultPipeline()
-        );
-    }
-
-    private VideoPipelineResponse defaultPipeline() {
-        return new VideoPipelineResponse(
-            new VideoPipelineStepResponse("pending", "", "", "", 0, 0),
-            new VideoPipelineStepResponse("pending", "", "", "", 0, 0),
-            new VideoPipelineStepResponse("pending", "", "", "", 0, 0)
+            snapshot.pipeline()
         );
     }
 

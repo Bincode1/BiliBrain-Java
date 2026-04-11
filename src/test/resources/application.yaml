@@ -12,7 +12,6 @@ app:
     folder-videos-cache-ttl-seconds: 300
   processing:
     max-video-minutes: 30
-    subtitle-first-enabled: false
   storage:
     data-dir: ./target/test-data
     audio-dir: ./target/test-data/audio

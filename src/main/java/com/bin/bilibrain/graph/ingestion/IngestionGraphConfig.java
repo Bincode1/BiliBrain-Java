@@ -21,7 +21,7 @@ public class IngestionGraphConfig {
     public StateGraph ingestionStateGraph(
         LoadVideoContextNode loadVideoContextNode,
         ValidateVideoNode validateVideoNode,
-        FetchSubtitleNode fetchSubtitleNode,
+        PrepareAudioShellNode prepareAudioShellNode,
         FinalizePipelineNode finalizePipelineNode
     ) throws GraphStateException {
         KeyStrategyFactory keyStrategyFactory = new KeyStrategyFactoryBuilder()
@@ -31,12 +31,12 @@ public class IngestionGraphConfig {
         return new StateGraph("bilibili-ingestion", keyStrategyFactory)
             .addNode("load_video_context", node_async(loadVideoContextNode))
             .addNode("validate_video", node_async(validateVideoNode))
-            .addNode("fetch_subtitle", node_async(fetchSubtitleNode))
+            .addNode("prepare_audio_shell", node_async(prepareAudioShellNode))
             .addNode("finalize_pipeline", node_async(finalizePipelineNode))
             .addEdge(START, "load_video_context")
             .addEdge("load_video_context", "validate_video")
-            .addEdge("validate_video", "fetch_subtitle")
-            .addEdge("fetch_subtitle", "finalize_pipeline")
+            .addEdge("validate_video", "prepare_audio_shell")
+            .addEdge("prepare_audio_shell", "finalize_pipeline")
             .addEdge("finalize_pipeline", END);
     }
 

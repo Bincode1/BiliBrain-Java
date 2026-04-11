@@ -1,6 +1,5 @@
 package com.bin.bilibrain.graph.ingestion;
 
-import com.bin.bilibrain.bilibili.BilibiliSubtitlePayload;
 import com.bin.bilibrain.entity.Transcript;
 import com.bin.bilibrain.entity.Video;
 import com.bin.bilibrain.entity.VideoPipeline;
@@ -8,8 +7,6 @@ import com.bin.bilibrain.ingestion.PipelineStateSupport;
 import com.bin.bilibrain.mapper.TranscriptMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -23,7 +20,6 @@ public class IngestionGraphStateStore {
     private final TranscriptMapper transcriptMapper;
     private final VideoPipelineMapper videoPipelineMapper;
     private final PipelineStateSupport pipelineStateSupport;
-    private final ObjectMapper objectMapper;
 
     public Video requireVideo(String bvid) {
         Video video = videoMapper.selectById(bvid);
@@ -68,43 +64,6 @@ public class IngestionGraphStateStore {
         videoPipelineMapper.updateById(existing);
     }
 
-    public Transcript saveSubtitleTranscript(Video video, BilibiliSubtitlePayload subtitlePayload) {
-        LocalDateTime now = LocalDateTime.now();
-        Transcript existing = transcriptMapper.findByBvid(video.getBvid());
-        String segmentsJson = toJson(subtitlePayload.segments());
-        if (existing == null) {
-            transcriptMapper.insert(Transcript.builder()
-                .bvid(video.getBvid())
-                .sourceModel(subtitlePayload.sourceModel())
-                .segmentCount(subtitlePayload.segmentCount())
-                .transcriptText(subtitlePayload.transcriptText())
-                .segmentsJson(segmentsJson)
-                .createdAt(now)
-                .updatedAt(now)
-                .build());
-        } else {
-            existing.setSourceModel(subtitlePayload.sourceModel());
-            existing.setSegmentCount(subtitlePayload.segmentCount());
-            existing.setTranscriptText(subtitlePayload.transcriptText());
-            existing.setSegmentsJson(segmentsJson);
-            existing.setUpdatedAt(now);
-            transcriptMapper.updateById(existing);
-        }
-
-        Video freshVideo = videoMapper.selectById(video.getBvid());
-        if (freshVideo != null) {
-            if (subtitlePayload.cid() != null && subtitlePayload.cid() > 0) {
-                freshVideo.setCid(subtitlePayload.cid());
-            }
-            freshVideo.setSubtitleSource(subtitlePayload.sourceModel());
-            freshVideo.setSyncedAt(now);
-            freshVideo.setUpdatedAt(now);
-            videoMapper.updateById(freshVideo);
-        }
-
-        return transcriptMapper.findByBvid(video.getBvid());
-    }
-
     public void touchVideo(String bvid) {
         Video video = videoMapper.selectById(bvid);
         if (video == null) {
@@ -112,13 +71,5 @@ public class IngestionGraphStateStore {
         }
         video.setUpdatedAt(LocalDateTime.now());
         videoMapper.updateById(video);
-    }
-
-    private String toJson(Object value) {
-        try {
-            return objectMapper.writeValueAsString(value);
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("写入字幕 segments_json 失败。", exception);
-        }
     }
 }

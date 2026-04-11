@@ -60,8 +60,6 @@ public class AppProperties {
         @Max(300)
         private int maxVideoMinutes = 30;
 
-        private boolean subtitleFirstEnabled = true;
-
         @Min(1)
         private int ingestionMaxConcurrency = 3;
 

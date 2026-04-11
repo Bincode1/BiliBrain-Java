@@ -59,6 +59,7 @@ src/main/resources/application-*.yaml
 
 # Claude Code
 .claude/
+AGENTS.md
 
 # Help file
 HELP.md

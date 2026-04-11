@@ -2,6 +2,7 @@ package com.bin.bilibrain.ingestion;
 
 import com.bin.bilibrain.catalog.VideoPipelineResponse;
 import com.bin.bilibrain.catalog.VideoPipelineStepResponse;
+import com.bin.bilibrain.entity.Transcript;
 import com.bin.bilibrain.entity.Video;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
@@ -81,11 +82,50 @@ public class PipelineStateSupport {
     }
 
     public void markAudioShellCompleted(Map<String, Map<String, Object>> state) {
-        updateStep(state, STEP_AUDIO, "done", Map.of("path", "shell://audio"));
+        markAudioDone(state, "shell://audio", "");
     }
 
     public void markAudioFailed(Map<String, Map<String, Object>> state, String error) {
         updateStep(state, STEP_AUDIO, "failed", Map.of("error", safeString(error)));
+    }
+
+    public void markAudioDone(Map<String, Map<String, Object>> state, String path, String substageLabel) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("path", safeString(path));
+        updates.put("substage_label", safeString(substageLabel));
+        updateStep(state, STEP_AUDIO, "done", updates);
+    }
+
+    public void markTranscriptRunning(
+        Map<String, Map<String, Object>> state,
+        String sourceModel,
+        String substageLabel
+    ) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("source_model", safeString(sourceModel));
+        updates.put("segment_count", 0);
+        updates.put("substage_label", safeString(substageLabel));
+        updateStep(state, STEP_TRANSCRIPT, "running", updates);
+    }
+
+    public void markTranscriptDone(Map<String, Map<String, Object>> state, String sourceModel, int segmentCount) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("source_model", safeString(sourceModel));
+        updates.put("segment_count", Math.max(segmentCount, 0));
+        updates.put("substage_label", "");
+        updateStep(state, STEP_TRANSCRIPT, "done", updates);
+    }
+
+    public void markTranscriptPending(Map<String, Map<String, Object>> state) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("source_model", "");
+        updates.put("segment_count", 0);
+        updates.put("substage_label", "");
+        updateStep(state, STEP_TRANSCRIPT, "pending", updates);
+    }
+
+    public void markTranscriptFailed(Map<String, Map<String, Object>> state, String error) {
+        updateStep(state, STEP_TRANSCRIPT, "failed", Map.of("error", safeString(error)));
     }
 
     public void hydrateAudioStep(Video video, Map<String, Map<String, Object>> state) {
@@ -95,6 +135,20 @@ public class PipelineStateSupport {
         Map<String, Object> audio = state.get(STEP_AUDIO);
         if ("pending".equals(audio.get("status"))) {
             updateStep(state, STEP_AUDIO, "done", Map.of("path", safeString(video.getAudioObjectKey())));
+        }
+    }
+
+    public void hydrateTranscriptStep(Transcript transcript, Map<String, Map<String, Object>> state) {
+        if (transcript == null || isBlank(transcript.getTranscriptText())) {
+            return;
+        }
+        Map<String, Object> transcriptStep = state.get(STEP_TRANSCRIPT);
+        if ("pending".equals(transcriptStep.get("status"))) {
+            markTranscriptDone(
+                state,
+                transcript.getSourceModel(),
+                transcript.getSegmentCount() == null ? 0 : transcript.getSegmentCount()
+            );
         }
     }
 
@@ -212,6 +266,7 @@ public class PipelineStateSupport {
         step.put("updated_at", "");
         step.put("error", "");
         step.put("path", "");
+        step.put("substage_label", "");
         return step;
     }
 

@@ -2,13 +2,11 @@ package com.bin.bilibrain.ingestion;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.bin.bilibrain.config.AppProperties;
+import com.bin.bilibrain.graph.ingestion.IngestionGraphRunner;
 import com.bin.bilibrain.entity.IngestionTask;
 import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.entity.VideoPipeline;
 import com.bin.bilibrain.mapper.IngestionTaskMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
-import com.bin.bilibrain.mapper.VideoPipelineMapper;
-import com.bin.bilibrain.system.ProcessingSettingsService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -27,10 +25,8 @@ import java.util.concurrent.atomic.AtomicBoolean;
 @RequiredArgsConstructor
 public class IngestionDispatcherService {
     private final IngestionTaskMapper ingestionTaskMapper;
-    private final VideoPipelineMapper videoPipelineMapper;
     private final VideoMapper videoMapper;
-    private final PipelineStateSupport pipelineStateSupport;
-    private final ProcessingSettingsService processingSettingsService;
+    private final IngestionGraphRunner ingestionGraphRunner;
     private final AppProperties appProperties;
     @Qualifier("applicationTaskExecutor")
     private final Executor executor;
@@ -133,59 +129,13 @@ public class IngestionDispatcherService {
             return;
         }
 
-        Map<String, Map<String, Object>> state = loadPipelineState(bvid);
         try {
-            int maxVideoMinutes = processingSettingsService.getSettings().maxVideoMinutes();
-            if ((video.getDuration() != null ? video.getDuration() : 0) > maxVideoMinutes * 60) {
-                pipelineStateSupport.markAudioFailed(state, "视频时长超过当前全局限制，请先调整配置后重试。");
-                savePipelineState(bvid, state);
-                markTaskFinished(task.getTaskId(), "failed", pipelineStateSupport.pipelineErrorMessage(state));
-                return;
-            }
-
-            pipelineStateSupport.markAudioRunning(state);
-            savePipelineState(bvid, state);
-
-            pipelineStateSupport.markAudioShellCompleted(state);
-            savePipelineState(bvid, state);
-
-            video.setUpdatedAt(LocalDateTime.now());
-            videoMapper.updateById(video);
+            ingestionGraphRunner.run(bvid);
             markTaskFinished(task.getTaskId(), "succeeded", "");
         } catch (Exception exception) {
             log.warn("ingestion shell failed for {}", bvid, exception);
-            pipelineStateSupport.markAudioFailed(state, exception.getMessage());
-            savePipelineState(bvid, state);
             markTaskFinished(task.getTaskId(), "failed", exception.getMessage());
         }
-    }
-
-    private Map<String, Map<String, Object>> loadPipelineState(String bvid) {
-        VideoPipeline pipeline = videoPipelineMapper.selectById(bvid);
-        Map<String, Map<String, Object>> state = pipelineStateSupport.readState(pipeline == null ? null : pipeline.getStateJson());
-        Video video = videoMapper.selectById(bvid);
-        pipelineStateSupport.hydrateAudioStep(video, state);
-        return state;
-    }
-
-    private void savePipelineState(String bvid, Map<String, Map<String, Object>> state) {
-        LocalDateTime now = LocalDateTime.now();
-        String overallStatus = pipelineStateSupport.overallStatus(state);
-        String stateJson = pipelineStateSupport.writeState(state);
-        VideoPipeline existing = videoPipelineMapper.selectById(bvid);
-        if (existing == null) {
-            videoPipelineMapper.insert(VideoPipeline.builder()
-                .bvid(bvid)
-                .overallStatus(overallStatus)
-                .stateJson(stateJson)
-                .updatedAt(now)
-                .build());
-            return;
-        }
-        existing.setOverallStatus(overallStatus);
-        existing.setStateJson(stateJson);
-        existing.setUpdatedAt(now);
-        videoPipelineMapper.updateById(existing);
     }
 
     private void markTaskFinished(Long taskId, String status, String errorMessage) {

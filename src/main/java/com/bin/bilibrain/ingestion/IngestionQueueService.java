@@ -86,6 +86,10 @@ public class IngestionQueueService {
             null,
             new LambdaUpdateWrapper<Video>()
                 .set(Video::getSyncedAt, null)
+                .set(Video::getSubtitleSource, null)
+                .set(Video::getAudioStorageProvider, null)
+                .set(Video::getAudioObjectKey, null)
+                .set(Video::getAudioUploadedAt, null)
         );
         resetStates.clear();
         resetTasks.clear();
@@ -113,6 +117,10 @@ public class IngestionQueueService {
 
             Video video = requireVideo(bvid);
             video.setSyncedAt(null);
+            video.setSubtitleSource(null);
+            video.setAudioStorageProvider(null);
+            video.setAudioObjectKey(null);
+            video.setAudioUploadedAt(null);
             video.setUpdatedAt(LocalDateTime.now());
             videoMapper.updateById(video);
 

@@ -56,7 +56,7 @@ public class PipelineStatusService {
             status.summaryUpdatedAt(),
             status.errorMsg(),
             status.manualTags(),
-            pipelineStateSupport.toPipelineResponse(loadState(video, pipeline))
+            pipelineStateSupport.toPipelineResponse(loadState(video, pipeline, transcriptMapper.findByBvid(video.getBvid())))
         );
     }
 
@@ -65,7 +65,7 @@ public class PipelineStatusService {
         VideoSummary summary = videoSummaryMapper.selectById(video.getBvid());
         VideoPipeline pipeline = videoPipelineMapper.selectById(video.getBvid());
         IngestionTask activeTask = ingestionTaskMapper.findLatestActiveByBvid(video.getBvid());
-        Map<String, Map<String, Object>> state = loadState(video, pipeline);
+        Map<String, Map<String, Object>> state = loadState(video, pipeline, transcript);
         String pipelineOverallStatus = pipelineStateSupport.overallStatus(state);
 
         ResetTaskState resetState = ingestionQueueService.getResetState(video.getBvid());
@@ -120,9 +120,10 @@ public class PipelineStatusService {
         );
     }
 
-    private Map<String, Map<String, Object>> loadState(Video video, VideoPipeline pipeline) {
+    private Map<String, Map<String, Object>> loadState(Video video, VideoPipeline pipeline, Transcript transcript) {
         Map<String, Map<String, Object>> state = pipelineStateSupport.readState(pipeline == null ? null : pipeline.getStateJson());
         pipelineStateSupport.hydrateAudioStep(video, state);
+        pipelineStateSupport.hydrateTranscriptStep(transcript, state);
         return state;
     }
 

@@ -32,6 +32,7 @@ app:
     session-cache-ttl-seconds: ${BILIBILI_SESSION_CACHE_TTL_SECONDS:30}
   processing:
     max-video-minutes: ${DEFAULT_MAX_VIDEO_MINUTES:30}
+    subtitle-first-enabled: ${INGESTION_SUBTITLE_FIRST_ENABLED:true}
     ingestion-max-concurrency: ${INGESTION_MAX_CONCURRENCY:3}
     ingestion-poll-interval-seconds: ${INGESTION_POLL_INTERVAL_SECONDS:2}
   storage:

@@ -29,7 +29,7 @@ public class ProcessingSettingsService {
         return payload;
     }
 
-    private ProcessingSettingsEntity ensureSettingsRow() {
+    private synchronized ProcessingSettingsEntity ensureSettingsRow() {
         ProcessingSettingsEntity existing = processingSettingsMapper.selectById(SETTINGS_ROW_ID);
         if (existing != null) {
             return existing;

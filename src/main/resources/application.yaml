@@ -26,6 +26,7 @@ app:
     sessdata: ${BILIBILI_SESSDATA:}
     bili-jct: ${BILIBILI_BILI_JCT:}
     dede-user-id: ${BILIBILI_DEDE_USER_ID:}
+    session-cache-ttl-seconds: ${BILIBILI_SESSION_CACHE_TTL_SECONDS:30}
   processing:
     max-video-minutes: ${DEFAULT_MAX_VIDEO_MINUTES:30}
     ingestion-max-concurrency: ${INGESTION_MAX_CONCURRENCY:3}

@@ -1,6 +1,4 @@
 package com.bin.bilibrain.bilibili;
-
-import com.bin.bilibrain.config.AppProperties;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
@@ -37,7 +35,7 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     };
 
     private final WebClient.Builder webClientBuilder;
-    private final AppProperties appProperties;
+    private final BilibiliCookieStore bilibiliCookieStore;
 
     @Override
     public List<BilibiliFolderMetadata> listFolders(long uid) {
@@ -205,23 +203,17 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     }
 
     private URI buildUri(String url, Map<String, Object> params) {
-        UriComponentsBuilder builder = UriComponentsBuilder.fromHttpUrl(url);
+        UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
         params.forEach((key, value) -> builder.queryParam(key, value));
         return builder.build(true).toUri();
     }
 
     private String buildCookieHeader() {
-        List<String> cookies = new ArrayList<>();
-        appendCookie(cookies, "SESSDATA", appProperties.getBilibili().getSessdata());
-        appendCookie(cookies, "bili_jct", appProperties.getBilibili().getBiliJct());
-        appendCookie(cookies, "DedeUserID", appProperties.getBilibili().getDedeUserId());
-        return String.join("; ", cookies);
-    }
-
-    private void appendCookie(List<String> cookies, String name, String value) {
-        if (StringUtils.hasText(value)) {
-            cookies.add(name + "=" + value.trim());
-        }
+        return bilibiliCookieStore.loadCookies().entrySet().stream()
+            .filter(entry -> StringUtils.hasText(entry.getValue()))
+            .map(entry -> entry.getKey() + "=" + entry.getValue().trim())
+            .reduce((left, right) -> left + "; " + right)
+            .orElse("");
     }
 
     private String resolveCoverUrl(String coverUrl) {

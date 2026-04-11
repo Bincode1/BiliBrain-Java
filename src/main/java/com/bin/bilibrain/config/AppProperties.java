@@ -38,6 +38,8 @@ public class AppProperties {
         private String sessdata = "";
         private String biliJct = "";
         private String dedeUserId = "";
+        @Min(1)
+        private int sessionCacheTtlSeconds = 30;
     }
 
     @Data

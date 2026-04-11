@@ -5,6 +5,12 @@ CREATE TABLE IF NOT EXISTS processing_settings (
     updated_at TIMESTAMP NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS app_state (
+    state_key VARCHAR(128) PRIMARY KEY,
+    state_value TEXT NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS folders (
     folder_id BIGINT PRIMARY KEY,
     uid BIGINT NOT NULL,

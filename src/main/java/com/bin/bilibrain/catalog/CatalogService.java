@@ -1,6 +1,8 @@
 package com.bin.bilibrain.catalog;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.bin.bilibrain.auth.AuthService;
+import com.bin.bilibrain.auth.AuthSessionResponse;
 import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.entity.Folder;
 import com.bin.bilibrain.entity.Video;
@@ -40,15 +42,14 @@ public class CatalogService {
     private final FolderMapper folderMapper;
     private final VideoMapper videoMapper;
     private final AppProperties appProperties;
+    private final AuthService authService;
 
     public FolderListResponse listFolders(Long requestedUid) {
         LambdaQueryWrapper<Folder> queryWrapper = new LambdaQueryWrapper<Folder>()
             .orderByDesc(Folder::getMediaCount)
             .orderByDesc(Folder::getUpdatedAt);
         Long effectiveUid = resolveRequestedUid(requestedUid);
-        if (effectiveUid != null && effectiveUid > 0) {
-            queryWrapper.eq(Folder::getUid, effectiveUid);
-        }
+        queryWrapper.eq(Folder::getUid, effectiveUid);
 
         List<FolderSummaryResponse> folders = folderMapper.selectList(queryWrapper)
             .stream()
@@ -56,19 +57,12 @@ public class CatalogService {
             .toList();
 
         long folderCount = folders.size();
-        long videoCount;
-        if (effectiveUid != null && effectiveUid > 0 && !folders.isEmpty()) {
-            List<Long> folderIds = folders.stream()
-                .map(FolderSummaryResponse::folderId)
-                .toList();
-            videoCount = videoMapper.selectCount(
-                new LambdaQueryWrapper<Video>().in(Video::getFolderId, folderIds)
-            );
-        } else if (effectiveUid != null && effectiveUid > 0) {
-            videoCount = 0L;
-        } else {
-            videoCount = videoMapper.selectCount(null);
-        }
+        long videoCount = folders.isEmpty()
+            ? 0L
+            : videoMapper.selectCount(new LambdaQueryWrapper<Video>().in(
+                Video::getFolderId,
+                folders.stream().map(FolderSummaryResponse::folderId).toList()
+            ));
         return new FolderListResponse(
             folders,
             new CatalogStatsResponse(folderCount, videoCount),
@@ -169,6 +163,10 @@ public class CatalogService {
         if (configuredUid != null && configuredUid > 0) {
             return configuredUid;
         }
-        return null;
+        AuthSessionResponse session = authService.getSession();
+        if (session.loggedIn() && session.uid() != null && session.uid() > 0) {
+            return session.uid();
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请先扫码登录 Bilibili，或提供 uid。");
     }
 }

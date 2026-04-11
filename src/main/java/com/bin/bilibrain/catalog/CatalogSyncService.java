@@ -1,5 +1,7 @@
 package com.bin.bilibrain.catalog;
 
+import com.bin.bilibrain.auth.AuthService;
+import com.bin.bilibrain.auth.AuthSessionResponse;
 import com.bin.bilibrain.bilibili.BilibiliClientException;
 import com.bin.bilibrain.bilibili.BilibiliFolderMetadata;
 import com.bin.bilibrain.bilibili.BilibiliMetadataClient;
@@ -25,6 +27,7 @@ public class CatalogSyncService {
     private final FolderMapper folderMapper;
     private final VideoMapper videoMapper;
     private final AppProperties appProperties;
+    private final AuthService authService;
 
     public FolderSyncResponse syncFolders(Long requestedUid) {
         long uid = resolveUid(requestedUid);
@@ -154,6 +157,10 @@ public class CatalogSyncService {
         if (configuredUid != null && configuredUid > 0) {
             return configuredUid;
         }
-        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请提供 uid，或在配置里设置 BILIBILI_UID。");
+        AuthSessionResponse session = authService.getSession();
+        if (session.loggedIn() && session.uid() != null && session.uid() > 0) {
+            return session.uid();
+        }
+        throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "请先扫码登录 Bilibili，或提供 uid。");
     }
 }

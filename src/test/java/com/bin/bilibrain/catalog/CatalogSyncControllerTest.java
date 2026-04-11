@@ -1,15 +1,20 @@
 package com.bin.bilibrain.catalog;
 
+import com.bin.bilibrain.auth.AuthService;
+import com.bin.bilibrain.auth.AuthSessionResponse;
 import com.bin.bilibrain.bilibili.BilibiliFolderMetadata;
 import com.bin.bilibrain.bilibili.BilibiliMetadataClient;
 import com.bin.bilibrain.bilibili.BilibiliVideoMetadata;
 import com.bin.bilibrain.entity.Folder;
 import com.bin.bilibrain.mapper.FolderMapper;
+import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
@@ -19,16 +24,17 @@ import java.util.List;
 import static org.hamcrest.Matchers.containsInAnyOrder;
 import static org.hamcrest.Matchers.hasItem;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
-class CatalogSyncControllerTest {
+class CatalogSyncControllerTest extends AbstractMySqlIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -36,12 +42,21 @@ class CatalogSyncControllerTest {
     @Autowired
     private FolderMapper folderMapper;
 
-    @MockBean
+    @Autowired
     private BilibiliMetadataClient bilibiliMetadataClient;
+
+    @Autowired
+    private AuthService authService;
+
+    @BeforeEach
+    void setUp() {
+        reset(bilibiliMetadataClient, authService);
+        when(authService.getSession()).thenReturn(new AuthSessionResponse(false, null, null));
+    }
 
     @Test
     void syncFoldersPersistsRemoteFolders() throws Exception {
-        given(bilibiliMetadataClient.listFolders(eq(9527L))).willReturn(List.of(
+        when(bilibiliMetadataClient.listFolders(eq(9527L))).thenReturn(List.of(
             new BilibiliFolderMetadata(1001L, "Java AI", 12),
             new BilibiliFolderMetadata(1002L, "BiliBrain", 8)
         ));
@@ -64,6 +79,21 @@ class CatalogSyncControllerTest {
     }
 
     @Test
+    void syncFoldersFallsBackToLoggedInUid() throws Exception {
+        when(authService.getSession()).thenReturn(new AuthSessionResponse(true, "BinCode", 9527L));
+        when(bilibiliMetadataClient.listFolders(eq(9527L))).thenReturn(List.of(
+            new BilibiliFolderMetadata(1001L, "Java AI", 12)
+        ));
+
+        mockMvc.perform(post("/api/folders/sync")
+                .contentType("application/json")
+                .content("{}"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.uid").value(9527))
+            .andExpect(jsonPath("$.new_folders").value(1));
+    }
+
+    @Test
     void syncFolderVideosPersistsRemoteVideos() throws Exception {
         folderMapper.insert(Folder.builder()
             .folderId(2002L)
@@ -74,7 +104,7 @@ class CatalogSyncControllerTest {
             .updatedAt(LocalDateTime.of(2026, 4, 11, 10, 0))
             .build());
 
-        given(bilibiliMetadataClient.listFolderVideos(eq(2002L))).willReturn(List.of(
+        when(bilibiliMetadataClient.listFolderVideos(eq(2002L))).thenReturn(List.of(
             new BilibiliVideoMetadata(
                 "BV1abc411111",
                 "Spring AI Alibaba 入门",
@@ -113,10 +143,25 @@ class CatalogSyncControllerTest {
     }
 
     @Test
-    void syncFoldersRequiresUidWhenNotConfigured() throws Exception {
+    void syncFoldersRequiresUidOrLoginWhenUnavailable() throws Exception {
         mockMvc.perform(post("/api/folders/sync")
                 .contentType("application/json")
                 .content("{}"))
             .andExpect(status().isBadRequest());
+    }
+
+    @TestConfiguration
+    static class CatalogSyncControllerTestConfig {
+        @Bean
+        @Primary
+        BilibiliMetadataClient bilibiliMetadataClient() {
+            return mock(BilibiliMetadataClient.class);
+        }
+
+        @Bean
+        @Primary
+        AuthService authService() {
+            return mock(AuthService.class);
+        }
     }
 }

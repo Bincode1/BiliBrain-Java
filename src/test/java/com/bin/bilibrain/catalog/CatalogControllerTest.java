@@ -1,26 +1,34 @@
 package com.bin.bilibrain.catalog;
 
+import com.bin.bilibrain.auth.AuthService;
+import com.bin.bilibrain.auth.AuthSessionResponse;
 import com.bin.bilibrain.entity.Folder;
 import com.bin.bilibrain.entity.Video;
 import com.bin.bilibrain.mapper.FolderMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
+import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
-import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
 
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-@SpringBootTest
 @AutoConfigureMockMvc
 @DirtiesContext(classMode = DirtiesContext.ClassMode.BEFORE_EACH_TEST_METHOD)
-class CatalogControllerTest {
+class CatalogControllerTest extends AbstractMySqlIntegrationTest {
 
     @Autowired
     private MockMvc mockMvc;
@@ -31,16 +39,19 @@ class CatalogControllerTest {
     @Autowired
     private VideoMapper videoMapper;
 
+    @Autowired
+    private AuthService authService;
+
+    @BeforeEach
+    void setUp() {
+        reset(authService);
+        when(authService.getSession()).thenReturn(new AuthSessionResponse(false, null, null));
+    }
+
     @Test
-    void listFoldersReturnsEmptyPayloadWhenDatabaseIsEmpty() throws Exception {
+    void listFoldersRequiresUidOrLoginWhenUnavailable() throws Exception {
         mockMvc.perform(get("/api/folders"))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.folders").isArray())
-            .andExpect(jsonPath("$.folders").isEmpty())
-            .andExpect(jsonPath("$.stats.folder_count").value(0))
-            .andExpect(jsonPath("$.stats.video_count").value(0))
-            .andExpect(jsonPath("$.cached").value(false))
-            .andExpect(jsonPath("$.stale").value(false));
+            .andExpect(status().isBadRequest());
     }
 
     @Test
@@ -65,7 +76,7 @@ class CatalogControllerTest {
             .isInvalid(0)
             .build());
 
-        mockMvc.perform(get("/api/folders"))
+        mockMvc.perform(get("/api/folders").queryParam("uid", "9527"))
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.folders[0].folder_id").value(1001))
             .andExpect(jsonPath("$.folders[0].title").value("Java AI"))
@@ -73,6 +84,34 @@ class CatalogControllerTest {
             .andExpect(jsonPath("$.stats.folder_count").value(1))
             .andExpect(jsonPath("$.stats.video_count").value(1))
             .andExpect(jsonPath("$.cached").value(true));
+    }
+
+    @Test
+    void listFoldersFallsBackToLoggedInUid() throws Exception {
+        folderMapper.insert(Folder.builder()
+            .folderId(1001L)
+            .uid(9527L)
+            .title("Java AI")
+            .mediaCount(12)
+            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 0))
+            .updatedAt(LocalDateTime.of(2026, 4, 11, 11, 0))
+            .build());
+        folderMapper.insert(Folder.builder()
+            .folderId(2002L)
+            .uid(10086L)
+            .title("Other")
+            .mediaCount(9)
+            .createdAt(LocalDateTime.of(2026, 4, 11, 10, 0))
+            .updatedAt(LocalDateTime.of(2026, 4, 11, 11, 0))
+            .build());
+
+        when(authService.getSession()).thenReturn(new AuthSessionResponse(true, "BinCode", 9527L));
+
+        mockMvc.perform(get("/api/folders"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.folders.length()").value(1))
+            .andExpect(jsonPath("$.folders[0].folder_id").value(1001))
+            .andExpect(jsonPath("$.folders[0].title").value("Java AI"));
     }
 
     @Test
@@ -118,5 +157,14 @@ class CatalogControllerTest {
     void listFolderVideosReturnsNotFoundForUnknownFolder() throws Exception {
         mockMvc.perform(get("/api/folders/999/videos"))
             .andExpect(status().isNotFound());
+    }
+
+    @TestConfiguration
+    static class CatalogControllerTestConfig {
+        @Bean
+        @Primary
+        AuthService authService() {
+            return mock(AuthService.class);
+        }
     }
 }

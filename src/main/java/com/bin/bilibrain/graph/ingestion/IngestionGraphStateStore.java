@@ -72,4 +72,25 @@ public class IngestionGraphStateStore {
         video.setUpdatedAt(LocalDateTime.now());
         videoMapper.updateById(video);
     }
+
+    public Video saveVideo(Video video) {
+        if (video == null || video.getBvid() == null) {
+            throw new IllegalArgumentException("保存视频状态时缺少 bvid。");
+        }
+        videoMapper.updateById(video);
+        return requireVideo(video.getBvid());
+    }
+
+    public Transcript saveTranscript(Transcript transcript) {
+        if (transcript == null || transcript.getBvid() == null) {
+            throw new IllegalArgumentException("保存转写结果时缺少 bvid。");
+        }
+        Transcript existing = transcriptMapper.findByBvid(transcript.getBvid());
+        if (existing == null) {
+            transcriptMapper.insert(transcript);
+        } else {
+            transcriptMapper.updateById(transcript);
+        }
+        return transcriptMapper.findByBvid(transcript.getBvid());
+    }
 }

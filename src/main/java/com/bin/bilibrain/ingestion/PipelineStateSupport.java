@@ -78,7 +78,11 @@ public class PipelineStateSupport {
     }
 
     public void markAudioRunning(Map<String, Map<String, Object>> state) {
-        updateStep(state, STEP_AUDIO, "running", Map.of());
+        markAudioRunning(state, "");
+    }
+
+    public void markAudioRunning(Map<String, Map<String, Object>> state, String substageLabel) {
+        updateStep(state, STEP_AUDIO, "running", Map.of("substage_label", safeString(substageLabel)));
     }
 
     public void markAudioShellCompleted(Map<String, Map<String, Object>> state) {

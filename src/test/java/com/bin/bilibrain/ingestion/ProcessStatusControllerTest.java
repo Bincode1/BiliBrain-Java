@@ -8,16 +8,29 @@ import com.bin.bilibrain.mapper.TranscriptMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.mapper.VideoSummaryMapper;
+import com.bin.bilibrain.service.asr.AudioTranscriptionService;
+import com.bin.bilibrain.service.media.AudioDownloadService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Primary;
 import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -45,6 +58,43 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
     @Autowired
     private PipelineStatusService pipelineStatusService;
 
+    @Autowired
+    private AudioDownloadService audioDownloadService;
+
+    @Autowired
+    private AudioTranscriptionService audioTranscriptionService;
+
+    @BeforeEach
+    void setUp() throws Exception {
+        reset(audioDownloadService, audioTranscriptionService);
+        when(audioDownloadService.download(anyString())).thenAnswer(invocation -> {
+            Path tempFile = Files.createTempFile("status-audio-", ".m4a");
+            Files.writeString(tempFile, "fake-audio");
+            return new AudioDownloadService.DownloadedAudio(tempFile, 112233L, "audio/mp4", 64000, "30216");
+        });
+        when(audioTranscriptionService.resolveSourceModel()).thenReturn("dashscope/paraformer-v2");
+        when(audioTranscriptionService.transcribe(any(Path.class), any())).thenAnswer(invocation -> {
+            @SuppressWarnings("unchecked")
+            var listener = (java.util.function.Consumer<AudioTranscriptionService.AudioTranscriptionProgress>) invocation.getArgument(1);
+            listener.accept(new AudioTranscriptionService.AudioTranscriptionProgress("chunking", "正在分析静音并切分音频", 2, 0, null));
+            listener.accept(new AudioTranscriptionService.AudioTranscriptionProgress("transcribing", "正在转写音频块 1/2", 2, 1, 1));
+            listener.accept(new AudioTranscriptionService.AudioTranscriptionProgress("transcribing", "正在转写音频块 2/2", 2, 2, 2));
+            return new AudioTranscriptionService.AudioTranscriptionResult(
+                "dashscope/paraformer-v2",
+                2,
+                2,
+                "第一段内容\n\n第二段继续",
+                java.util.List.of(
+                    new AudioTranscriptionService.AudioTranscriptSegment(0, 0.0, 60.0, "第一段内容"),
+                    new AudioTranscriptionService.AudioTranscriptSegment(1, 60.0, 120.0, "第二段继续")
+                ),
+                180,
+                240,
+                8
+            );
+        });
+    }
+
     @Test
     void processEndpointQueuesVideoAndStatusEventuallyTurnsPartial() throws Exception {
         insertVideo("BV1process111", 900);
@@ -60,6 +110,9 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
         assertThat(status.overallStatus()).isEqualTo("partial");
         assertThat(status.running()).isFalse();
         assertThat(status.steps().get(0).status()).isEqualTo("done");
+        assertThat(status.steps().get(1).status()).isEqualTo("done");
+        assertThat(status.hasTranscript()).isTrue();
+        assertThat(status.transcriptSegmentCount()).isEqualTo(2);
     }
 
     @Test
@@ -158,5 +211,20 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
     @FunctionalInterface
     private interface Check {
         boolean done();
+    }
+
+    @TestConfiguration
+    static class ProcessStatusTestConfig {
+        @Bean
+        @Primary
+        AudioDownloadService audioDownloadService() {
+            return mock(AudioDownloadService.class);
+        }
+
+        @Bean
+        @Primary
+        AudioTranscriptionService audioTranscriptionService() {
+            return mock(AudioTranscriptionService.class);
+        }
     }
 }

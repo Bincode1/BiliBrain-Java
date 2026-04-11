@@ -10,6 +10,7 @@ import com.bin.bilibrain.mapper.TranscriptMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.mapper.VideoSummaryMapper;
+import com.bin.bilibrain.service.media.AudioStorageService;
 import com.bin.bilibrain.system.ProcessingSettingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -34,6 +35,7 @@ public class PipelineStatusService {
     private final PipelineStateSupport pipelineStateSupport;
     private final IngestionDispatcherService ingestionDispatcherService;
     private final IngestionQueueService ingestionQueueService;
+    private final AudioStorageService audioStorageService;
 
     public ProcessStatusResponse getStatus(String bvid) {
         Video video = videoMapper.selectById(bvid);
@@ -114,7 +116,7 @@ public class PipelineStatusService {
             parseManualTags(video.getManualTags()),
             safe(video.getAudioStorageProvider()),
             safe(video.getAudioObjectKey()),
-            "",
+            audioStorageService.getAudioUrl(video.getAudioObjectKey()),
             false,
             false
         );

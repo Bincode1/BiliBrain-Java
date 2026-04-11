@@ -4,6 +4,29 @@ server:
 spring:
   application:
     name: bilibrain
+  autoconfigure:
+    exclude:
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAsyncToolCallingManagerAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
+      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
+  ai:
+    model:
+      chat: ${SPRING_AI_MODEL_CHAT:none}
+      embedding: ${SPRING_AI_MODEL_EMBEDDING:none}
+      audio:
+        speech: ${SPRING_AI_MODEL_AUDIO_SPEECH:none}
+        transcription: ${SPRING_AI_MODEL_AUDIO_TRANSCRIPTION:none}
+    dashscope:
+      api-key: ${DASHSCOPE_API_KEY:}
+      audio:
+        transcription:
+          options:
+            model: ${DASHSCOPE_TRANSCRIPTION_MODEL:paraformer-v2}
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:bilibrain}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USERNAME:root}
@@ -34,6 +57,15 @@ app:
     max-video-minutes: ${DEFAULT_MAX_VIDEO_MINUTES:30}
     ingestion-max-concurrency: ${INGESTION_MAX_CONCURRENCY:3}
     ingestion-poll-interval-seconds: ${INGESTION_POLL_INTERVAL_SECONDS:2}
+    asr-chunk-concurrency: ${ASR_CHUNK_CONCURRENCY:2}
+    asr-target-chunk-seconds: ${ASR_TARGET_CHUNK_SECONDS:180}
+    asr-chunk-seconds: ${ASR_CHUNK_SECONDS:240}
+    asr-chunk-overlap-seconds: ${ASR_CHUNK_OVERLAP_SECONDS:8}
+    asr-silence-noise-db: ${ASR_SILENCE_NOISE_DB:-35}
+    asr-silence-min-seconds: ${ASR_SILENCE_MIN_SECONDS:0.6}
+    asr-language-hints: ${ASR_LANGUAGE_HINTS:zh}
+    ffmpeg-command: ${FFMPEG_COMMAND:ffmpeg}
+    ffprobe-command: ${FFPROBE_COMMAND:ffprobe}
   storage:
     data-dir: ${DATA_DIR:./data}
     audio-dir: ${AUDIO_DIR:./data/audio}

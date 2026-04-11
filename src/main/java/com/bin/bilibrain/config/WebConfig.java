@@ -3,6 +3,7 @@ package com.bin.bilibrain.config;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
+import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
 import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.List;
@@ -20,5 +21,17 @@ public class WebConfig implements WebMvcConfigurer {
             .allowedMethods("*")
             .allowedHeaders("*")
             .allowCredentials(true);
+    }
+
+    @Override
+    public void addResourceHandlers(ResourceHandlerRegistry registry) {
+        String audioLocation = appProperties.getStorage()
+            .getAudioDir()
+            .toAbsolutePath()
+            .normalize()
+            .toUri()
+            .toString();
+        registry.addResourceHandler("/storage/audio/**")
+            .addResourceLocations(audioLocation);
     }
 }

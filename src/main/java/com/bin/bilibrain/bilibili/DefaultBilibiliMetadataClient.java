@@ -1,5 +1,6 @@
 package com.bin.bilibrain.bilibili;
 import lombok.RequiredArgsConstructor;
+import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -7,6 +8,9 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
 import java.net.URLEncoder;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -114,6 +118,115 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
             page += 1;
         }
         return videos;
+    }
+
+    @Override
+    public BilibiliAudioTrack downloadAudioTrack(String bvid, Path outputPath) {
+        if (!StringUtils.hasText(bvid)) {
+            throw new BilibiliClientException("bvid 不能为空。");
+        }
+        Path normalizedOutput = outputPath.toAbsolutePath().normalize();
+        try {
+            Files.createDirectories(normalizedOutput.getParent());
+            BilibiliAudioTrack track = resolveAudioTrack(bvid.trim());
+            DataBufferUtils.write(
+                webClientBuilder.build()
+                    .get()
+                    .uri(track.audioUrl())
+                    .headers(headers -> {
+                        headers.set("User-Agent", USER_AGENT);
+                        headers.set("Referer", "https://www.bilibili.com/video/" + bvid.trim() + "/");
+                        headers.set("Origin", "https://www.bilibili.com");
+                        headers.set("Accept", "*/*");
+                        String cookieHeader = buildCookieHeader();
+                        if (StringUtils.hasText(cookieHeader)) {
+                            headers.set("Cookie", cookieHeader);
+                        }
+                    })
+                    .retrieve()
+                    .bodyToFlux(org.springframework.core.io.buffer.DataBuffer.class),
+                normalizedOutput,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.TRUNCATE_EXISTING,
+                StandardOpenOption.WRITE
+            ).block();
+            return track;
+        } catch (BilibiliClientException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BilibiliClientException("下载 Bilibili 音频失败。", exception);
+        }
+    }
+
+    private BilibiliAudioTrack resolveAudioTrack(String bvid) {
+        Map<String, Object> viewPayload = getJson(
+            "https://api.bilibili.com/x/web-interface/view",
+            signedParams(Map.of("bvid", bvid))
+        );
+        Map<String, Object> viewData = asMap(viewPayload.get("data"));
+        long cid = asLong(viewData.get("cid"));
+        if (cid <= 0) {
+            List<?> pages = asList(viewData.get("pages"));
+            if (!pages.isEmpty()) {
+                cid = asLong(asMap(pages.get(0)).get("cid"));
+            }
+        }
+        if (cid <= 0) {
+            throw new BilibiliClientException("当前视频没有可用 cid，无法提取音频。");
+        }
+
+        Map<String, Object> playurlPayload = getJson(
+            "https://api.bilibili.com/x/player/playurl",
+            Map.of(
+                "bvid", bvid,
+                "cid", cid,
+                "qn", 64,
+                "fnval", 16,
+                "fourk", 1
+            )
+        );
+        Map<String, Object> playurlData = asMap(playurlPayload.get("data"));
+        Map<String, Object> dash = asMap(playurlData.get("dash"));
+        List<?> audioTracks = asList(dash.get("audio"));
+        if (audioTracks.isEmpty()) {
+            throw new BilibiliClientException("当前视频没有可用音频流。");
+        }
+
+        Map<String, Object> chosen = audioTracks.stream()
+            .map(this::asMap)
+            .min(Comparator.comparingLong(track -> asLong(track.get("bandwidth"))))
+            .orElseThrow(() -> new BilibiliClientException("当前视频没有可用音频流。"));
+
+        String audioUrl = asString(chosen.get("baseUrl"));
+        if (!StringUtils.hasText(audioUrl)) {
+            audioUrl = asString(chosen.get("base_url"));
+        }
+        if (!StringUtils.hasText(audioUrl)) {
+            List<?> backups = asList(chosen.get("backupUrl"));
+            if (backups.isEmpty()) {
+                backups = asList(chosen.get("backup_url"));
+            }
+            if (!backups.isEmpty()) {
+                audioUrl = asString(backups.get(0));
+            }
+        }
+        if (!StringUtils.hasText(audioUrl)) {
+            throw new BilibiliClientException("当前音频流 URL 为空。");
+        }
+
+        return new BilibiliAudioTrack(
+            cid,
+            audioUrl,
+            asString(chosen.get("mimeType")).isBlank()
+                ? defaultMimeType(asString(chosen.get("mime_type")))
+                : asString(chosen.get("mimeType")),
+            asInt(chosen.get("bandwidth")),
+            asString(chosen.get("id"))
+        );
+    }
+
+    private String defaultMimeType(String rawMimeType) {
+        return StringUtils.hasText(rawMimeType) ? rawMimeType : "audio/mp4";
     }
 
     private Map<String, Object> signedParams(Map<String, Object> params) {

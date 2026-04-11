@@ -3,6 +3,7 @@ package com.bin.bilibrain.config;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
+import jakarta.validation.constraints.NotBlank;
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.validation.annotation.Validated;
@@ -65,6 +66,31 @@ public class AppProperties {
 
         @Min(1)
         private int ingestionPollIntervalSeconds = 2;
+
+        @Min(1)
+        private int asrChunkConcurrency = 2;
+
+        @Min(15)
+        private int asrTargetChunkSeconds = 180;
+
+        @Min(30)
+        private int asrChunkSeconds = 240;
+
+        @Min(0)
+        private int asrChunkOverlapSeconds = 8;
+
+        private int asrSilenceNoiseDb = -35;
+
+        @Min(0)
+        private double asrSilenceMinSeconds = 0.6;
+
+        private List<String> asrLanguageHints = new ArrayList<>(List.of("zh"));
+
+        @NotBlank
+        private String ffmpegCommand = "ffmpeg";
+
+        @NotBlank
+        private String ffprobeCommand = "ffprobe";
     }
 
     @Data

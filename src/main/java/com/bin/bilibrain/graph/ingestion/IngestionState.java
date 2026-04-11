@@ -12,6 +12,7 @@ public final class IngestionState {
     public static final String DURATION_SECONDS = "duration_seconds";
     public static final String MAX_VIDEO_MINUTES = "max_video_minutes";
     public static final String TRANSCRIPT_PRESENT = "transcript_present";
+    public static final String AUDIO_PATH = "audio_path";
 
     private IngestionState() {
     }
@@ -30,5 +31,9 @@ public final class IngestionState {
 
     public static Video resolveVideo(OverAllState state) {
         return state.value(VIDEO, Video.class).orElse(null);
+    }
+
+    public static String resolveAudioPath(OverAllState state) {
+        return state.value(AUDIO_PATH, String.class).orElse("");
     }
 }

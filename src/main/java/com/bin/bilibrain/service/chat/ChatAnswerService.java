@@ -7,8 +7,6 @@ import com.bin.bilibrain.service.retrieval.KnowledgeBaseSearchService;
 import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.ai.chat.client.advisor.MessageChatMemoryAdvisor;
-import org.springframework.ai.chat.memory.ChatMemory;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -33,12 +31,9 @@ public class ChatAnswerService {
 
     @Qualifier("qaChatClient")
     private final ObjectProvider<ChatClient> qaChatClientProvider;
-
-    @Qualifier("conversationChatMemory")
-    private final ObjectProvider<ChatMemory> chatMemoryProvider;
-
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
+    private final ConversationMemoryService conversationMemoryService;
 
     public boolean isAvailable() {
         return qaChatClientProvider.getIfAvailable() != null;
@@ -149,16 +144,7 @@ public class ChatAnswerService {
     ) {
         ChatClient.ChatClientRequestSpec spec = chatClient.prompt()
             .system(systemPrompt)
-            .user(userPrompt);
-
-        ChatMemory chatMemory = chatMemoryProvider.getIfAvailable();
-        if (chatMemory != null && StringUtils.hasText(conversationId)) {
-            spec = spec.advisors(
-                MessageChatMemoryAdvisor.builder(chatMemory)
-                    .conversationId(conversationId)
-                    .build()
-            );
-        }
+            .user(conversationMemoryService.decoratePrompt(conversationId, userPrompt));
 
         String answer = spec.call().content();
         if (!StringUtils.hasText(answer)) {

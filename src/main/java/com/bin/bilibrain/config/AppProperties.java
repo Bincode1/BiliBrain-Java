@@ -37,6 +37,9 @@ public class AppProperties {
     @Valid
     private Summary summary = new Summary();
 
+    @Valid
+    private Chat chat = new Chat();
+
     @Data
     public static class Cors {
         private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
@@ -136,5 +139,21 @@ public class AppProperties {
         private int windowOverlapCharacters = 300;
 
         private double temperature = 0.2;
+    }
+
+    @Data
+    public static class Chat {
+        @Min(100)
+        private int compactionTokenThreshold = 1200;
+
+        @Min(2)
+        @Max(20)
+        private int recentMessageLimit = 6;
+
+        @Min(200)
+        private int memoryMaxCharacters = 4000;
+
+        @Min(20)
+        private int memoryLineMaxCharacters = 180;
     }
 }

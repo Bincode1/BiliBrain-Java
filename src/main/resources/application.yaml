@@ -90,6 +90,11 @@ app:
     window-max-characters: ${SUMMARY_WINDOW_MAX_CHARACTERS:3000}
     window-overlap-characters: ${SUMMARY_WINDOW_OVERLAP_CHARACTERS:300}
     temperature: ${SUMMARY_TEMPERATURE:0.2}
+  chat:
+    compaction-token-threshold: ${CHAT_COMPACTION_TOKEN_THRESHOLD:1200}
+    recent-message-limit: ${CHAT_RECENT_MESSAGE_LIMIT:6}
+    memory-max-characters: ${CHAT_MEMORY_MAX_CHARACTERS:4000}
+    memory-line-max-characters: ${CHAT_MEMORY_LINE_MAX_CHARACTERS:180}
   storage:
     data-dir: ${DATA_DIR:./data}
     audio-dir: ${AUDIO_DIR:./data/audio}

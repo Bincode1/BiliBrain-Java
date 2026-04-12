@@ -37,6 +37,11 @@ app:
     window-max-characters: 500
     window-overlap-characters: 50
     temperature: 0.2
+  chat:
+    compaction-token-threshold: 120
+    recent-message-limit: 4
+    memory-max-characters: 1200
+    memory-line-max-characters: 80
   storage:
     data-dir: ./target/test-data
     audio-dir: ./target/test-data/audio

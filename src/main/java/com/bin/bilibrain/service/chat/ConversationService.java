@@ -34,6 +34,7 @@ public class ConversationService {
     private final ChatMessageMapper chatMessageMapper;
     private final ChatConversationMemoryMapper chatConversationMemoryMapper;
     private final ChatConversationContextStatMapper chatConversationContextStatMapper;
+    private final ConversationMemoryService conversationMemoryService;
 
     public List<ChatConversationVO> listConversations() {
         return chatConversationMapper.selectList(
@@ -145,6 +146,7 @@ public class ConversationService {
         }
 
         refreshContextStats(conversationId);
+        conversationMemoryService.compactIfNeeded(conversationId);
         return message;
     }
 

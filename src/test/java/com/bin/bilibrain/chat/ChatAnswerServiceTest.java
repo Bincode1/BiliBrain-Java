@@ -3,6 +3,7 @@ package com.bin.bilibrain.chat;
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
 import com.bin.bilibrain.service.chat.ChatAnswerResult;
 import com.bin.bilibrain.service.chat.ChatAnswerService;
+import com.bin.bilibrain.service.chat.ConversationMemoryService;
 import com.bin.bilibrain.service.retrieval.KnowledgeBaseSearchService;
 import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import org.junit.jupiter.api.BeforeEach;
@@ -23,9 +24,9 @@ class ChatAnswerServiceTest {
     private ChatClient.ChatClientRequestSpec requestSpec;
     private ChatClient.CallResponseSpec callResponseSpec;
     private ObjectProvider<ChatClient> chatClientProvider;
-    private ObjectProvider<org.springframework.ai.chat.memory.ChatMemory> chatMemoryProvider;
     private KnowledgeBaseSearchService knowledgeBaseSearchService;
     private VideoSummarySearchService videoSummarySearchService;
+    private ConversationMemoryService conversationMemoryService;
     private ChatAnswerService chatAnswerService;
 
     @BeforeEach
@@ -34,22 +35,23 @@ class ChatAnswerServiceTest {
         requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         callResponseSpec = mock(ChatClient.CallResponseSpec.class);
         chatClientProvider = mock(ObjectProvider.class);
-        chatMemoryProvider = mock(ObjectProvider.class);
         knowledgeBaseSearchService = mock(KnowledgeBaseSearchService.class);
         videoSummarySearchService = mock(VideoSummarySearchService.class);
+        conversationMemoryService = mock(ConversationMemoryService.class);
 
         when(chatClientProvider.getIfAvailable()).thenReturn(chatClient);
-        when(chatMemoryProvider.getIfAvailable()).thenReturn(null);
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
         when(requestSpec.call()).thenReturn(callResponseSpec);
+        when(conversationMemoryService.decoratePrompt(anyString(), anyString()))
+            .thenAnswer(invocation -> invocation.getArgument(1, String.class));
 
         chatAnswerService = new ChatAnswerService(
             chatClientProvider,
-            chatMemoryProvider,
             knowledgeBaseSearchService,
-            videoSummarySearchService
+            videoSummarySearchService,
+            conversationMemoryService
         );
     }
 

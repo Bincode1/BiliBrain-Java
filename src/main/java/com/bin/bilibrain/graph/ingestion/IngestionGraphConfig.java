@@ -23,6 +23,8 @@ public class IngestionGraphConfig {
         ValidateVideoNode validateVideoNode,
         DownloadAudioNode downloadAudioNode,
         AsrTranscribeNode asrTranscribeNode,
+        ChunkTranscriptNode chunkTranscriptNode,
+        IndexChunksNode indexChunksNode,
         FinalizePipelineNode finalizePipelineNode
     ) throws GraphStateException {
         KeyStrategyFactory keyStrategyFactory = new KeyStrategyFactoryBuilder()
@@ -34,12 +36,16 @@ public class IngestionGraphConfig {
             .addNode("validate_video", node_async(validateVideoNode))
             .addNode("download_audio", node_async(downloadAudioNode))
             .addNode("asr_transcribe", node_async(asrTranscribeNode))
+            .addNode("chunk_transcript", node_async(chunkTranscriptNode))
+            .addNode("index_chunks", node_async(indexChunksNode))
             .addNode("finalize_pipeline", node_async(finalizePipelineNode))
             .addEdge(START, "load_video_context")
             .addEdge("load_video_context", "validate_video")
             .addEdge("validate_video", "download_audio")
             .addEdge("download_audio", "asr_transcribe")
-            .addEdge("asr_transcribe", "finalize_pipeline")
+            .addEdge("asr_transcribe", "chunk_transcript")
+            .addEdge("chunk_transcript", "index_chunks")
+            .addEdge("index_chunks", "finalize_pipeline")
             .addEdge("finalize_pipeline", END);
     }
 

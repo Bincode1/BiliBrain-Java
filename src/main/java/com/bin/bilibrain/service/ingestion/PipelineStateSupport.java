@@ -133,6 +133,28 @@ public class PipelineStateSupport {
         updateStep(state, STEP_TRANSCRIPT, "failed", Map.of("error", safeString(error)));
     }
 
+    public void markIndexRunning(Map<String, Map<String, Object>> state, String substageLabel) {
+        updateStep(state, STEP_INDEX, "running", Map.of("substage_label", safeString(substageLabel)));
+    }
+
+    public void markIndexDone(Map<String, Map<String, Object>> state, int chunkCount, String substageLabel) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("count", Math.max(chunkCount, 0));
+        updates.put("substage_label", safeString(substageLabel));
+        updateStep(state, STEP_INDEX, "done", updates);
+    }
+
+    public void markIndexPending(Map<String, Map<String, Object>> state, String substageLabel) {
+        Map<String, Object> updates = new LinkedHashMap<>();
+        updates.put("count", 0);
+        updates.put("substage_label", safeString(substageLabel));
+        updateStep(state, STEP_INDEX, "pending", updates);
+    }
+
+    public void markIndexFailed(Map<String, Map<String, Object>> state, String error) {
+        updateStep(state, STEP_INDEX, "failed", Map.of("error", safeString(error)));
+    }
+
     public void hydrateAudioStep(Video video, Map<String, Map<String, Object>> state) {
         if (video == null || isBlank(video.getAudioStorageProvider()) || isBlank(video.getAudioObjectKey())) {
             return;

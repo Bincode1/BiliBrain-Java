@@ -10,6 +10,7 @@ import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
 import com.bin.bilibrain.service.ingestion.IngestionDispatcherService;
 import com.bin.bilibrain.service.media.AudioDownloadService;
+import com.bin.bilibrain.service.retrieval.VectorSearchService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -51,9 +52,12 @@ class IngestionDispatcherServiceTest extends AbstractMySqlIntegrationTest {
     @Autowired
     private AudioTranscriptionService audioTranscriptionService;
 
+    @Autowired
+    private VectorSearchService vectorSearchService;
+
     @BeforeEach
     void setUp() throws Exception {
-        reset(audioDownloadService, audioTranscriptionService);
+        reset(audioDownloadService, audioTranscriptionService, vectorSearchService);
         when(audioDownloadService.download(anyString())).thenAnswer(invocation -> {
             Path tempFile = Files.createTempFile("dispatcher-audio-", ".m4a");
             Files.writeString(tempFile, "fake-audio");
@@ -75,10 +79,11 @@ class IngestionDispatcherServiceTest extends AbstractMySqlIntegrationTest {
                 8
             )
         );
+        when(vectorSearchService.isAvailable()).thenReturn(true);
     }
 
     @Test
-    void dispatchNowProcessesQueuedTaskIntoPartialPipeline() {
+    void dispatchNowProcessesQueuedTaskIntoIndexedPipeline() {
         insertVideo("BV1dispatch111", 600);
         insertQueuedTask("BV1dispatch111");
 
@@ -92,9 +97,10 @@ class IngestionDispatcherServiceTest extends AbstractMySqlIntegrationTest {
         IngestionTask task = latestTask("BV1dispatch111");
         assertThat(task.getStatus()).isEqualTo("succeeded");
         assertThat(pipeline).isNotNull();
-        assertThat(pipeline.getOverallStatus()).isEqualTo("partial");
+        assertThat(pipeline.getOverallStatus()).isEqualTo("indexed");
         assertThat(pipeline.getStateJson()).contains("\"audio\":{\"status\":\"done\"");
         assertThat(pipeline.getStateJson()).contains("\"transcript\":{\"status\":\"done\"");
+        assertThat(pipeline.getStateJson()).contains("\"index\":{\"status\":\"done\"");
     }
 
     @Test
@@ -183,6 +189,12 @@ class IngestionDispatcherServiceTest extends AbstractMySqlIntegrationTest {
         @Primary
         AudioTranscriptionService audioTranscriptionService() {
             return mock(AudioTranscriptionService.class);
+        }
+
+        @Bean
+        @Primary
+        VectorSearchService vectorSearchService() {
+            return mock(VectorSearchService.class);
         }
     }
 }

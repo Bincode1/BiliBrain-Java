@@ -8,6 +8,7 @@ import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
 import com.bin.bilibrain.service.media.AudioDownloadService;
+import com.bin.bilibrain.service.retrieval.VectorSearchService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -50,9 +51,12 @@ class IngestionGraphShellTest extends AbstractMySqlIntegrationTest {
     @Autowired
     private AudioTranscriptionService audioTranscriptionService;
 
+    @Autowired
+    private VectorSearchService vectorSearchService;
+
     @BeforeEach
     void setUp() throws Exception {
-        reset(audioDownloadService, audioTranscriptionService);
+        reset(audioDownloadService, audioTranscriptionService, vectorSearchService);
         when(audioDownloadService.download(anyString())).thenAnswer(invocation -> {
             String bvid = invocation.getArgument(0);
             Path tempFile = Files.createTempFile("graph-audio-" + bvid + "-", ".m4a");
@@ -80,6 +84,7 @@ class IngestionGraphShellTest extends AbstractMySqlIntegrationTest {
                 8
             );
         });
+        when(vectorSearchService.isAvailable()).thenReturn(true);
     }
 
     @Test
@@ -92,9 +97,10 @@ class IngestionGraphShellTest extends AbstractMySqlIntegrationTest {
         Video refreshedVideo = videoMapper.selectById("BV1graph11111");
 
         assertThat(pipeline).isNotNull();
-        assertThat(pipeline.getOverallStatus()).isEqualTo("partial");
+        assertThat(pipeline.getOverallStatus()).isEqualTo("indexed");
         assertThat(pipeline.getStateJson()).contains("\"audio\":{\"status\":\"done\"");
         assertThat(pipeline.getStateJson()).contains("\"transcript\":{\"status\":\"done\"");
+        assertThat(pipeline.getStateJson()).contains("\"index\":{\"status\":\"done\"");
         assertThat(transcriptMapper.findByBvid("BV1graph11111")).isNotNull();
         assertThat(transcriptMapper.findByBvid("BV1graph11111").getTranscriptText()).contains("第二段继续");
         assertThat(refreshedVideo.getSubtitleSource()).isNull();
@@ -142,6 +148,12 @@ class IngestionGraphShellTest extends AbstractMySqlIntegrationTest {
         @Primary
         AudioTranscriptionService audioTranscriptionService() {
             return mock(AudioTranscriptionService.class);
+        }
+
+        @Bean
+        @Primary
+        VectorSearchService vectorSearchService() {
+            return mock(VectorSearchService.class);
         }
     }
 }

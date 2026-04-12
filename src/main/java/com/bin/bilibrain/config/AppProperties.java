@@ -31,6 +31,9 @@ public class AppProperties {
     @Valid
     private Storage storage = new Storage();
 
+    @Valid
+    private Retrieval retrieval = new Retrieval();
+
     @Data
     public static class Cors {
         private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
@@ -101,5 +104,20 @@ public class AppProperties {
         private Path uploadDir = Path.of("./uploads");
         private Path toolsWorkspaceRoot = Path.of("./data/tool_workspaces");
         private Path skillsRoot = Path.of("./skills");
+    }
+
+    @Data
+    public static class Retrieval {
+        private boolean enabled = false;
+
+        @Min(100)
+        private int chunkSize = 500;
+
+        @Min(0)
+        private int chunkOverlap = 100;
+
+        @Min(1)
+        @Max(20)
+        private int searchTopK = 5;
     }
 }

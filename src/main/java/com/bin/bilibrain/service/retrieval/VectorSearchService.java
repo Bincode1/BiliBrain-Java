@@ -2,46 +2,65 @@ package com.bin.bilibrain.service.retrieval;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.document.Document;
+import org.springframework.ai.vectorstore.SearchRequest;
 import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.filter.FilterExpressionBuilder;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
+
 import java.util.List;
 
 @Service
 @RequiredArgsConstructor
 public class VectorSearchService {
-    // 暂时注释掉，等待Milvus依赖问题解决
-    // private final VectorStore vectorStore;
+    private final ObjectProvider<VectorStore> vectorStoreProvider;
+
+    public boolean isAvailable() {
+        return vectorStoreProvider.getIfAvailable() != null;
+    }
 
     public void addDocuments(List<Document> documents) {
-        // vectorStore.add(documents);
+        if (documents == null || documents.isEmpty()) {
+            return;
+        }
+        requireVectorStore().add(documents);
     }
 
     public void deleteByBvid(String bvid) {
-        // vectorStore.delete(FilterExpressionBuilder.builder()
-        //     .eq("bvid", bvid).build());
+        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
+        if (vectorStore == null || bvid == null || bvid.isBlank()) {
+            return;
+        }
+        vectorStore.delete(new FilterExpressionBuilder().eq("bvid", bvid).build());
     }
 
-    public List<Document> similaritySearch(String query, int topK) {
-        // return vectorStore.similaritySearch(
-        //     SearchRequest.builder()
-        //         .query(query)
-        //         .topK(topK)
-        //         .build()
-        // );
-        return null;
+    public List<Document> similaritySearch(String query, int topK, Long folderId, String bvid) {
+        SearchRequest.Builder builder = SearchRequest.builder()
+            .query(query)
+            .topK(topK);
+
+        var filterBuilder = new FilterExpressionBuilder();
+        FilterExpressionBuilder.Op filter = null;
+        if (folderId != null) {
+            filter = filterBuilder.eq("folder_id", folderId);
+        }
+        if (bvid != null && !bvid.isBlank()) {
+            FilterExpressionBuilder.Op bvidFilter = filterBuilder.eq("bvid", bvid);
+            filter = filter == null ? bvidFilter : filterBuilder.and(filter, bvidFilter);
+        }
+        if (filter != null) {
+            builder.filterExpression(filter.build());
+        }
+
+        return requireVectorStore().similaritySearch(builder.build());
     }
 
-    public List<Document> similaritySearchWithFilter(String query, String bvid, int topK) {
-        // return vectorStore.similaritySearch(
-        //     SearchRequest.builder()
-        //         .query(query)
-        //         .topK(topK)
-        //         .filterExpression(new FilterExpressionBuilder()
-        //             .eq("bvid", bvid).build())
-        //         .build()
-        // );
-        return null;
+    private VectorStore requireVectorStore() {
+        VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
+        if (vectorStore == null) {
+            throw new IllegalStateException("向量检索未启用，请先配置 Chroma 与 embedding 模型。");
+        }
+        return vectorStore;
     }
 }
 

@@ -10,7 +10,6 @@ spring:
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAsyncToolCallingManagerAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeEmbeddingAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
@@ -23,10 +22,22 @@ spring:
         transcription: ${SPRING_AI_MODEL_AUDIO_TRANSCRIPTION:none}
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
+      embedding:
+        options:
+          model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
       audio:
         transcription:
           options:
             model: ${DASHSCOPE_TRANSCRIPTION_MODEL:paraformer-v2}
+    vectorstore:
+      chroma:
+        client:
+          host: ${CHROMA_HOST:localhost}
+          port: ${CHROMA_PORT:8000}
+        tenant-name: ${CHROMA_TENANT:default_tenant}
+        database-name: ${CHROMA_DATABASE:default_database}
+        collection-name: ${CHROMA_COLLECTION:bilibrain_transcript_chunks}
+        initialize-schema: ${CHROMA_INITIALIZE_SCHEMA:true}
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:bilibrain}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USERNAME:root}
@@ -66,6 +77,11 @@ app:
     asr-language-hints: ${ASR_LANGUAGE_HINTS:zh}
     ffmpeg-command: ${FFMPEG_COMMAND:ffmpeg}
     ffprobe-command: ${FFPROBE_COMMAND:ffprobe}
+  retrieval:
+    enabled: ${VECTOR_STORE_ENABLED:false}
+    chunk-size: ${RETRIEVAL_CHUNK_SIZE:500}
+    chunk-overlap: ${RETRIEVAL_CHUNK_OVERLAP:100}
+    search-top-k: ${RETRIEVAL_SEARCH_TOP_K:5}
   storage:
     data-dir: ${DATA_DIR:./data}
     audio-dir: ${AUDIO_DIR:./data/audio}

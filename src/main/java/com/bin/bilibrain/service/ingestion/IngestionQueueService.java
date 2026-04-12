@@ -11,6 +11,7 @@ import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.mapper.VideoSummaryMapper;
 import com.bin.bilibrain.model.vo.ingestion.ResetAllVideosResponse;
+import com.bin.bilibrain.service.retrieval.VectorSearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
@@ -33,6 +34,7 @@ public class IngestionQueueService {
     private final VideoSummaryMapper videoSummaryMapper;
     private final VideoPipelineMapper videoPipelineMapper;
     private final IngestionDispatcherService ingestionDispatcherService;
+    private final VectorSearchService vectorSearchService;
     private final JdbcTemplate jdbcTemplate;
     @Qualifier("applicationTaskExecutor")
     private final Executor executor;
@@ -82,6 +84,7 @@ public class IngestionQueueService {
     @Transactional
     public ResetAllVideosResponse resetAllVideoProcessing() {
         cancelAllActiveTasks();
+        videoMapper.selectList(null).forEach(video -> vectorSearchService.deleteByBvid(video.getBvid()));
         int transcriptCount = jdbcTemplate.update("DELETE FROM transcripts");
         int summaryCount = jdbcTemplate.update("DELETE FROM video_summaries");
         int pipelineCount = jdbcTemplate.update("DELETE FROM video_pipeline");
@@ -114,6 +117,7 @@ public class IngestionQueueService {
     private void executeReset(String bvid) {
         try {
             resetStates.put(bvid, new ResetTaskState("running", ""));
+            vectorSearchService.deleteByBvid(bvid);
             transcriptMapper.deleteByBvid(bvid);
             videoSummaryMapper.deleteByBvid(bvid);
             videoPipelineMapper.deleteByBvid(bvid);

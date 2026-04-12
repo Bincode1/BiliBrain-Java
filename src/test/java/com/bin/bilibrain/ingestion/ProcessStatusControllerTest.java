@@ -12,6 +12,7 @@ import com.bin.bilibrain.mapper.VideoSummaryMapper;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
 import com.bin.bilibrain.service.ingestion.PipelineStatusService;
 import com.bin.bilibrain.service.media.AudioDownloadService;
+import com.bin.bilibrain.service.retrieval.VectorSearchService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -66,9 +67,12 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
     @Autowired
     private AudioTranscriptionService audioTranscriptionService;
 
+    @Autowired
+    private VectorSearchService vectorSearchService;
+
     @BeforeEach
     void setUp() throws Exception {
-        reset(audioDownloadService, audioTranscriptionService);
+        reset(audioDownloadService, audioTranscriptionService, vectorSearchService);
         when(audioDownloadService.download(anyString())).thenAnswer(invocation -> {
             Path tempFile = Files.createTempFile("status-audio-", ".m4a");
             Files.writeString(tempFile, "fake-audio");
@@ -95,10 +99,11 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
                 8
             );
         });
+        when(vectorSearchService.isAvailable()).thenReturn(true);
     }
 
     @Test
-    void processEndpointQueuesVideoAndStatusEventuallyTurnsPartial() throws Exception {
+    void processEndpointQueuesVideoAndStatusEventuallyTurnsIndexed() throws Exception {
         insertVideo("BV1process111", 900);
 
         mockMvc.perform(post("/api/videos/BV1process111/process"))
@@ -107,15 +112,17 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
             .andExpect(jsonPath("$.data.started").value(true))
             .andExpect(jsonPath("$.data.operation").value("process"));
 
-        waitUntil(() -> "partial".equals(pipelineStatusService.getStatus("BV1process111").overallStatus()));
+        waitUntil(() -> "indexed".equals(pipelineStatusService.getStatus("BV1process111").overallStatus()));
 
         ProcessStatusResponse status = pipelineStatusService.getStatus("BV1process111");
-        assertThat(status.overallStatus()).isEqualTo("partial");
+        assertThat(status.overallStatus()).isEqualTo("indexed");
         assertThat(status.running()).isFalse();
         assertThat(status.steps().get(0).status()).isEqualTo("done");
         assertThat(status.steps().get(1).status()).isEqualTo("done");
+        assertThat(status.steps().get(2).status()).isEqualTo("done");
         assertThat(status.hasTranscript()).isTrue();
         assertThat(status.transcriptSegmentCount()).isEqualTo(2);
+        assertThat(status.chunkCount()).isEqualTo(1);
     }
 
     @Test
@@ -230,6 +237,12 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
         @Primary
         AudioTranscriptionService audioTranscriptionService() {
             return mock(AudioTranscriptionService.class);
+        }
+
+        @Bean
+        @Primary
+        VectorSearchService vectorSearchService() {
+            return mock(VectorSearchService.class);
         }
     }
 }

@@ -40,11 +40,11 @@ public class IndexChunksNode implements NodeAction {
         }
 
         try {
-            pipelineStateSupport.markIndexRunning(pipelineState, "正在写入 Chroma");
+            pipelineStateSupport.markIndexRunning(pipelineState, "正在写入 Milvus");
             stateStore.savePipelineState(bvid, pipelineState);
             vectorSearchService.deleteByBvid(bvid);
             vectorSearchService.addDocuments(chunkDocuments);
-            pipelineStateSupport.markIndexDone(pipelineState, chunkDocuments.size(), "已写入 Chroma");
+            pipelineStateSupport.markIndexDone(pipelineState, chunkDocuments.size(), "已写入 Milvus");
             stateStore.savePipelineState(bvid, pipelineState);
             return buildUpdates(video, chunkDocuments.size());
         } catch (Exception exception) {

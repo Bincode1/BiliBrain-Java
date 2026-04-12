@@ -6,6 +6,7 @@ import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriComponentsBuilder;
 
 import java.net.URI;
@@ -25,6 +26,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.regex.Pattern;
 
 @Component
 @RequiredArgsConstructor
@@ -39,6 +41,7 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
         37, 48, 7, 16, 24, 55, 40, 61, 26, 17, 0, 1, 60, 51, 30, 4,
         22, 25, 54, 21, 56, 59, 6, 63, 57, 62, 11, 36, 20, 34, 44, 52
     };
+    private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
     private final WebClient.Builder webClientBuilder;
     private final BilibiliCredentialManager bilibiliCredentialManager;
@@ -120,6 +123,52 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
             page += 1;
         }
         return videos;
+    }
+
+    @Override
+    public BilibiliSearchResult searchVideos(String keyword, int page, int pageSize) {
+        String normalizedKeyword = normalizeKeyword(keyword);
+        Map<String, Object> payload = getJson(
+            "https://api.bilibili.com/x/web-interface/search/type",
+            Map.of(
+                "search_type", "video",
+                "keyword", normalizedKeyword,
+                "page", Math.max(page, 1),
+                "page_size", Math.min(Math.max(pageSize, 1), 30),
+                "order", "totalrank"
+            )
+        );
+        Map<String, Object> data = asMap(payload.get("data"));
+        List<?> items = asList(data.get("result"));
+        List<BilibiliSearchVideo> results = new ArrayList<>();
+        for (Object item : items) {
+            Map<String, Object> row = asMap(item);
+            String bvid = asString(row.get("bvid")).trim();
+            if (!StringUtils.hasText(bvid)) {
+                continue;
+            }
+            long publishedAt = asLong(row.get("pubdate"));
+            results.add(new BilibiliSearchVideo(
+                bvid,
+                stripHtml(row.get("title")),
+                stripHtml(row.get("author")),
+                stripHtml(row.get("description")),
+                resolveCoverUrl(asString(row.get("pic"))),
+                asString(row.get("duration")).trim(),
+                asInt(row.get("play")),
+                asInt(row.get("favorites")),
+                stripHtml(row.get("tag")),
+                publishedAt > 0 ? LocalDateTime.ofInstant(Instant.ofEpochSecond(publishedAt), ZoneOffset.UTC) : null,
+                "https://www.bilibili.com/video/" + bvid + "/"
+            ));
+        }
+        return new BilibiliSearchResult(
+            normalizedKeyword,
+            asInt(data.get("page")) == 0 ? Math.max(page, 1) : asInt(data.get("page")),
+            asInt(data.get("pagesize")) == 0 ? Math.min(Math.max(pageSize, 1), 30) : asInt(data.get("pagesize")),
+            asInt(data.get("numResults")),
+            results
+        );
     }
 
     @Override
@@ -336,6 +385,19 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
             return "https:" + raw;
         }
         return raw;
+    }
+
+    private String normalizeKeyword(String keyword) {
+        String normalized = keyword == null ? "" : keyword.trim().replaceAll("\\s+", " ");
+        if (!StringUtils.hasText(normalized)) {
+            throw new BilibiliClientException("搜索关键词不能为空。");
+        }
+        return normalized;
+    }
+
+    private String stripHtml(Object value) {
+        String raw = HtmlUtils.htmlUnescape(asString(value));
+        return HTML_TAG_PATTERN.matcher(raw).replaceAll(" ").replaceAll("\\s+", " ").trim();
     }
 
     private String cleanWbiValue(Object value) {

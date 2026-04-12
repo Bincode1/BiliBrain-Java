@@ -9,7 +9,9 @@ import com.bin.bilibrain.exception.ErrorCode;
 import com.bin.bilibrain.model.entity.Folder;
 import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.model.vo.catalog.CatalogStatsResponse;
+import com.bin.bilibrain.model.vo.catalog.BiliSearchVideoItemVO;
 import com.bin.bilibrain.model.vo.catalog.FolderListResponse;
+import com.bin.bilibrain.model.vo.catalog.FolderBiliSearchResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderSummaryResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderVideosResponse;
 import com.bin.bilibrain.model.vo.catalog.VideoListItemResponse;
@@ -17,9 +19,13 @@ import com.bin.bilibrain.service.ingestion.PipelineStatusService;
 import com.bin.bilibrain.model.vo.ingestion.VideoProcessSnapshot;
 import com.bin.bilibrain.mapper.FolderMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
+import com.bin.bilibrain.bilibili.BilibiliMetadataClient;
+import com.bin.bilibrain.bilibili.BilibiliSearchResult;
+import com.bin.bilibrain.bilibili.BilibiliSearchVideo;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -52,6 +58,7 @@ public class CatalogService {
     private final VideoMapper videoMapper;
     private final AppProperties appProperties;
     private final AuthService authService;
+    private final BilibiliMetadataClient bilibiliMetadataClient;
     private final CatalogSyncService catalogSyncService;
     private final CatalogCacheService catalogCacheService;
     private final PipelineStatusService pipelineStatusService;
@@ -143,6 +150,28 @@ public class CatalogService {
         );
     }
 
+    public FolderBiliSearchResponse searchBiliVideosForFolder(Long folderId, String keyword, int page, int pageSize) {
+        Folder folder = folderMapper.selectById(folderId);
+        if (folder == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "找不到这个收藏夹，请先同步收藏夹列表。", HttpStatus.NOT_FOUND);
+        }
+        String resolvedKeyword = StringUtils.hasText(keyword)
+            ? keyword.trim().replaceAll("\\s+", " ")
+            : defaultString(folder.getTitle()).trim().replaceAll("\\s+", " ");
+        if (!StringUtils.hasText(resolvedKeyword)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "这个收藏夹缺少可用标题，请手动输入搜索词。", HttpStatus.BAD_REQUEST);
+        }
+        BilibiliSearchResult result = bilibiliMetadataClient.searchVideos(resolvedKeyword, page, pageSize);
+        return new FolderBiliSearchResponse(
+            toFolderSummary(folder),
+            result.keyword(),
+            result.page(),
+            result.pageSize(),
+            result.total(),
+            result.results().stream().map(this::toSearchVideoItem).toList()
+        );
+    }
+
     private List<Folder> loadFolders(Long effectiveUid) {
         LambdaQueryWrapper<Folder> queryWrapper = new LambdaQueryWrapper<Folder>()
             .eq(Folder::getUid, effectiveUid)
@@ -184,6 +213,22 @@ public class CatalogService {
             isInvalid,
             formatDateTime(video.getCreatedAt()),
             snapshot.pipeline()
+        );
+    }
+
+    private BiliSearchVideoItemVO toSearchVideoItem(BilibiliSearchVideo video) {
+        return new BiliSearchVideoItemVO(
+            defaultString(video.bvid()),
+            defaultString(video.title()),
+            defaultString(video.upName()),
+            defaultString(video.description()),
+            defaultString(video.coverUrl()),
+            defaultString(video.durationText()),
+            video.playCount(),
+            video.favorites(),
+            defaultString(video.tagText()),
+            formatDateTime(video.publishedAt()),
+            defaultString(video.watchUrl())
         );
     }
 

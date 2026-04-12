@@ -1,7 +1,9 @@
 package com.bin.bilibrain.service.chat;
 
-import com.bin.bilibrain.model.dto.chat.AskStreamRequest;
+import com.bin.bilibrain.model.dto.chat.AskRequest;
 import com.bin.bilibrain.model.dto.chat.CreateConversationRequest;
+import com.bin.bilibrain.model.entity.ChatMessage;
+import com.bin.bilibrain.model.vo.chat.AskResponse;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -23,18 +25,41 @@ public class SseEventService {
     private final ChatAnswerService chatAnswerService;
     private final ObjectMapper objectMapper;
 
-    public SseEmitter streamAnswer(AskStreamRequest request) {
+    public AskResponse ask(AskRequest request) {
+        PreparedConversation preparedConversation = prepareConversation(request);
+        conversationService.appendMessage(preparedConversation.conversation().id(), "USER", request.message(), "[]");
+        ChatAnswerResult result = chatAnswerService.answer(
+            preparedConversation.conversation().id(),
+            preparedConversation.conversation().folderId(),
+            preparedConversation.conversation().videoBvid(),
+            request.message()
+        );
+        ChatMessage assistantMessage = conversationService.appendMessage(
+            preparedConversation.conversation().id(),
+            "ASSISTANT",
+            result.answer(),
+            writeSourcesJson(result),
+            result.mode(),
+            result.route()
+        );
+        return new AskResponse(
+            preparedConversation.conversation().id(),
+            preparedConversation.conversation(),
+            result.answer(),
+            result.route(),
+            result.mode(),
+            result.reasoning(),
+            result.sources(),
+            toMessageVO(assistantMessage)
+        );
+    }
+
+    public SseEmitter streamAnswer(AskRequest request) {
         SseEmitter emitter = new SseEmitter(0L);
         try {
-            boolean created = !StringUtils.hasText(request.conversationId());
-            ChatConversationVO conversation = created
-                ? conversationService.createConversation(new CreateConversationRequest(
-                    buildTitleHint(request.message()),
-                    request.conversationType(),
-                    request.folderId(),
-                    request.videoBvid()
-                ))
-                : conversationService.getConversation(request.conversationId());
+            PreparedConversation preparedConversation = prepareConversation(request);
+            boolean created = preparedConversation.created();
+            ChatConversationVO conversation = preparedConversation.conversation();
 
             send(emitter, "conversation", Map.of(
                 "created", created,
@@ -90,6 +115,19 @@ public class SseEventService {
         return emitter;
     }
 
+    private PreparedConversation prepareConversation(AskRequest request) {
+        boolean created = !StringUtils.hasText(request.conversationId());
+        ChatConversationVO conversation = created
+            ? conversationService.createConversation(new CreateConversationRequest(
+                buildTitleHint(request.message()),
+                request.conversationType(),
+                request.folderId(),
+                request.videoBvid()
+            ))
+            : conversationService.getConversation(request.conversationId());
+        return new PreparedConversation(created, conversation);
+    }
+
     private void send(SseEmitter emitter, String eventName, Object data) throws IOException {
         emitter.send(
             SseEmitter.event()
@@ -115,7 +153,7 @@ public class SseEventService {
         return normalized.length() <= 24 ? normalized : normalized.substring(0, 24);
     }
 
-    private ChatMessageVO toMessageVO(com.bin.bilibrain.model.entity.ChatMessage message) {
+    private ChatMessageVO toMessageVO(ChatMessage message) {
         return new ChatMessageVO(
             message.getId(),
             message.getConversationId(),
@@ -134,5 +172,8 @@ public class SseEventService {
         } catch (JsonProcessingException exception) {
             throw new IllegalStateException("序列化聊天 sources 失败。", exception);
         }
+    }
+
+    private record PreparedConversation(boolean created, ChatConversationVO conversation) {
     }
 }

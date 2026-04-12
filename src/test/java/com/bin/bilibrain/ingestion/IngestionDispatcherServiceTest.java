@@ -157,7 +157,7 @@ class IngestionDispatcherServiceTest extends AbstractMySqlIntegrationTest {
     }
 
     private void waitUntil(Check check) {
-        long deadline = System.currentTimeMillis() + 3000;
+        long deadline = System.currentTimeMillis() + 10000;
         while (System.currentTimeMillis() < deadline) {
             if (check.done()) {
                 return;

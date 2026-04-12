@@ -9,4 +9,9 @@ class BilibrainApplicationTests extends AbstractMySqlIntegrationTest {
     void contextLoads() {
     }
 
+    @Override
+    protected boolean shouldResetState() {
+        return false;
+    }
+
 }

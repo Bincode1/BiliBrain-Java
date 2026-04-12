@@ -2,9 +2,10 @@ package com.bin.bilibrain.controller;
 
 import com.bin.bilibrain.common.BaseResponse;
 import com.bin.bilibrain.common.ResultUtils;
-import com.bin.bilibrain.model.dto.chat.AskStreamRequest;
+import com.bin.bilibrain.model.dto.chat.AskRequest;
 import com.bin.bilibrain.model.dto.chat.CreateConversationRequest;
 import com.bin.bilibrain.model.dto.chat.UpdateConversationRequest;
+import com.bin.bilibrain.model.vo.chat.AskResponse;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
 import com.bin.bilibrain.service.chat.ConversationService;
@@ -60,8 +61,13 @@ public class ChatController {
         return ResultUtils.success(conversationService.getHistory(conversationId));
     }
 
+    @PostMapping("/api/ask")
+    public BaseResponse<AskResponse> ask(@Valid @RequestBody AskRequest request) {
+        return ResultUtils.success(sseEventService.ask(request));
+    }
+
     @PostMapping(path = "/api/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter askStream(@Valid @RequestBody AskStreamRequest request) {
+    public SseEmitter askStream(@Valid @RequestBody AskRequest request) {
         return sseEventService.streamAnswer(request);
     }
 }

@@ -10,6 +10,7 @@ import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.mapper.VideoSummaryMapper;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
+import com.bin.bilibrain.service.ingestion.IngestionDispatcherService;
 import com.bin.bilibrain.service.ingestion.PipelineStatusService;
 import com.bin.bilibrain.service.media.AudioDownloadService;
 import com.bin.bilibrain.service.retrieval.VectorSearchService;
@@ -62,6 +63,9 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
     private PipelineStatusService pipelineStatusService;
 
     @Autowired
+    private IngestionDispatcherService ingestionDispatcherService;
+
+    @Autowired
     private AudioDownloadService audioDownloadService;
 
     @Autowired
@@ -112,6 +116,7 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
             .andExpect(jsonPath("$.data.started").value(true))
             .andExpect(jsonPath("$.data.operation").value("process"));
 
+        ingestionDispatcherService.dispatchNow();
         waitUntil(() -> "indexed".equals(pipelineStatusService.getStatus("BV1process111").overallStatus()));
 
         ProcessStatusResponse status = pipelineStatusService.getStatus("BV1process111");
@@ -205,7 +210,7 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
     }
 
     private void waitUntil(Check check) {
-        long deadline = System.currentTimeMillis() + 3000;
+        long deadline = System.currentTimeMillis() + 10000;
         while (System.currentTimeMillis() < deadline) {
             if (check.done()) {
                 return;

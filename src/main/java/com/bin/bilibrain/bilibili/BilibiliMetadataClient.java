@@ -8,5 +8,7 @@ public interface BilibiliMetadataClient {
 
     List<BilibiliVideoMetadata> listFolderVideos(long folderId);
 
+    BilibiliSearchResult searchVideos(String keyword, int page, int pageSize);
+
     BilibiliAudioTrack downloadAudioTrack(String bvid, Path outputPath);
 }

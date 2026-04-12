@@ -36,6 +36,9 @@ public abstract class AbstractMySqlIntegrationTest {
 
     @BeforeEach
     void resetDatabaseState() {
+        if (!shouldResetState()) {
+            return;
+        }
         jdbcTemplate.execute("DELETE FROM GRAPH_CHECKPOINT");
         jdbcTemplate.execute("DELETE FROM GRAPH_THREAD");
         jdbcTemplate.execute("DELETE FROM tool_calls");
@@ -79,5 +82,9 @@ public abstract class AbstractMySqlIntegrationTest {
         } catch (IOException exception) {
             throw new IllegalStateException("清理测试目录失败。", exception);
         }
+    }
+
+    protected boolean shouldResetState() {
+        return true;
     }
 }

@@ -95,7 +95,7 @@ class ProcessingLifecycleTest extends AbstractMySqlIntegrationTest {
         Map<String, Map<String, Object>> state = pipelineStateSupport.defaultState();
         pipelineStateSupport.markAudioDone(state, "audio/BV1process01.mp3", "音频已缓存");
         pipelineStateSupport.markTranscriptDone(state, "paraformer-v2", 4);
-        pipelineStateSupport.markIndexDone(state, 6, "已写入 Chroma");
+        pipelineStateSupport.markIndexDone(state, 6, "已写入 Milvus");
         videoPipelineMapper.insert(VideoPipeline.builder()
             .bvid(bvid)
             .overallStatus("indexed")

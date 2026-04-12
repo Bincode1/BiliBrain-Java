@@ -12,6 +12,7 @@ spring:
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
+      - org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreAutoConfiguration
   ai:
     model:
       chat: ${SPRING_AI_MODEL_CHAT:dashscope}
@@ -24,23 +25,37 @@ spring:
       chat:
         enabled: ${DASHSCOPE_CHAT_ENABLED:false}
         options:
-          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
+          model: ${DASHSCOPE_CHAT_MODEL:qwen3.5-plus}
       embedding:
         options:
           model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
+          dimensions: ${DASHSCOPE_EMBEDDING_DIMENSIONS:1024}
       audio:
         transcription:
           options:
             model: ${DASHSCOPE_TRANSCRIPTION_MODEL:paraformer-v2}
     vectorstore:
-      chroma:
+      milvus:
         client:
-          host: ${CHROMA_HOST:localhost}
-          port: ${CHROMA_PORT:8000}
-        tenant-name: ${CHROMA_TENANT:default_tenant}
-        database-name: ${CHROMA_DATABASE:default_database}
-        collection-name: ${CHROMA_COLLECTION:bilibrain_transcript_chunks}
-        initialize-schema: ${CHROMA_INITIALIZE_SCHEMA:true}
+          host: ${MILVUS_HOST:localhost}
+          port: ${MILVUS_PORT:19530}
+          uri: ${MILVUS_URI:}
+          token: ${MILVUS_TOKEN:}
+          username: ${MILVUS_USERNAME:}
+          password: ${MILVUS_PASSWORD:}
+          secure: ${MILVUS_SECURE:false}
+          connect-timeout-ms: ${MILVUS_CONNECT_TIMEOUT_MS:10000}
+          keep-alive-time-ms: ${MILVUS_KEEP_ALIVE_TIME_MS:55000}
+          keep-alive-timeout-ms: ${MILVUS_KEEP_ALIVE_TIMEOUT_MS:20000}
+          idle-timeout-ms: ${MILVUS_IDLE_TIMEOUT_MS:0}
+          rpc-deadline-ms: ${MILVUS_RPC_DEADLINE_MS:0}
+        database-name: ${MILVUS_DATABASE:default}
+        collection-name: ${MILVUS_COLLECTION:bilibrain_transcript_chunks}
+        embedding-dimension: ${MILVUS_EMBEDDING_DIMENSION:1024}
+        index-type: ${MILVUS_INDEX_TYPE:IVF_FLAT}
+        metric-type: ${MILVUS_METRIC_TYPE:COSINE}
+        index-parameters: ${MILVUS_INDEX_PARAMETERS:{"nlist":1024}}
+        initialize-schema: ${MILVUS_INITIALIZE_SCHEMA:true}
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:bilibrain}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USERNAME:root}

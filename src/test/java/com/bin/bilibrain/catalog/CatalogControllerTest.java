@@ -2,6 +2,9 @@ package com.bin.bilibrain.catalog;
 
 import com.bin.bilibrain.model.vo.auth.AuthSessionVO;
 import com.bin.bilibrain.service.auth.AuthService;
+import com.bin.bilibrain.bilibili.BilibiliMetadataClient;
+import com.bin.bilibrain.bilibili.BilibiliSearchResult;
+import com.bin.bilibrain.bilibili.BilibiliSearchVideo;
 import com.bin.bilibrain.model.entity.Folder;
 import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.mapper.FolderMapper;
@@ -18,6 +21,7 @@ import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.reset;
@@ -42,9 +46,12 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
     @Autowired
     private AuthService authService;
 
+    @Autowired
+    private BilibiliMetadataClient bilibiliMetadataClient;
+
     @BeforeEach
     void setUp() {
-        reset(authService);
+        reset(authService, bilibiliMetadataClient);
         when(authService.getSession()).thenReturn(new AuthSessionVO(false, null, null));
     }
 
@@ -162,12 +169,60 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .andExpect(status().isNotFound());
     }
 
+    @Test
+    void searchBiliVideosForFolderFallsBackToFolderTitle() throws Exception {
+        folderMapper.insert(Folder.builder()
+            .folderId(3003L)
+            .uid(9527L)
+            .title("Spring AI Alibaba")
+            .mediaCount(8)
+            .createdAt(LocalDateTime.now())
+            .updatedAt(LocalDateTime.now())
+            .build());
+
+        when(bilibiliMetadataClient.searchVideos("Spring AI Alibaba", 1, 12)).thenReturn(
+            new BilibiliSearchResult(
+                "Spring AI Alibaba",
+                1,
+                12,
+                1,
+                List.of(new BilibiliSearchVideo(
+                    "BV1search0001",
+                    "Spring AI Alibaba 实战",
+                    "BinCode",
+                    "搜索描述",
+                    "https://example.com/search.jpg",
+                    "12:30",
+                    1024,
+                    88,
+                    "Spring AI",
+                    LocalDateTime.of(2026, 4, 12, 10, 0),
+                    "https://www.bilibili.com/video/BV1search0001/"
+                ))
+            )
+        );
+
+        mockMvc.perform(get("/api/folders/3003/bili-search"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.keyword").value("Spring AI Alibaba"))
+            .andExpect(jsonPath("$.data.total").value(1))
+            .andExpect(jsonPath("$.data.results[0].bvid").value("BV1search0001"))
+            .andExpect(jsonPath("$.data.results[0].watch_url").value("https://www.bilibili.com/video/BV1search0001/"));
+    }
+
     @TestConfiguration
     static class CatalogControllerTestConfig {
         @Bean
         @Primary
         AuthService authService() {
             return mock(AuthService.class);
+        }
+
+        @Bean
+        @Primary
+        BilibiliMetadataClient bilibiliMetadataClient() {
+            return mock(BilibiliMetadataClient.class);
         }
     }
 }

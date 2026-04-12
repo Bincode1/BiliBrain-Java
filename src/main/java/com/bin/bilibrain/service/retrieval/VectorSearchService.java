@@ -58,7 +58,7 @@ public class VectorSearchService {
     private VectorStore requireVectorStore() {
         VectorStore vectorStore = vectorStoreProvider.getIfAvailable();
         if (vectorStore == null) {
-            throw new IllegalStateException("向量检索未启用，请先配置 Chroma 与 embedding 模型。");
+            throw new IllegalStateException("向量检索未启用，请先配置 Milvus 与 embedding 模型。");
         }
         return vectorStore;
     }

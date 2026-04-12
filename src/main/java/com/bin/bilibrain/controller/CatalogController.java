@@ -5,6 +5,7 @@ import com.bin.bilibrain.common.ResultUtils;
 import com.bin.bilibrain.model.dto.catalog.FolderSyncRequest;
 import com.bin.bilibrain.model.dto.catalog.FolderVideoSyncRequest;
 import com.bin.bilibrain.model.vo.catalog.FolderListResponse;
+import com.bin.bilibrain.model.vo.catalog.FolderBiliSearchResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderSyncResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderVideoSyncResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderVideosResponse;
@@ -35,6 +36,16 @@ public class CatalogController {
     @GetMapping("/folders/{folderId}/videos")
     public BaseResponse<FolderVideosResponse> listFolderVideos(@PathVariable Long folderId) {
         return ResultUtils.success(catalogService.listFolderVideos(folderId));
+    }
+
+    @GetMapping("/folders/{folderId}/bili-search")
+    public BaseResponse<FolderBiliSearchResponse> searchBiliVideosForFolder(
+        @PathVariable Long folderId,
+        @RequestParam(required = false) String keyword,
+        @RequestParam(defaultValue = "1") int page,
+        @RequestParam(name = "page_size", defaultValue = "12") int pageSize
+    ) {
+        return ResultUtils.success(catalogService.searchBiliVideosForFolder(folderId, keyword, page, pageSize));
     }
 
     @PostMapping("/folders/sync")

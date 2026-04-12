@@ -20,6 +20,7 @@ import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
 import com.bin.bilibrain.service.retrieval.KnowledgeBaseSearchService;
 import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import com.bin.bilibrain.service.skills.SkillRegistryService;
+import com.bin.bilibrain.service.tools.ToolPolicyService;
 import com.bin.bilibrain.service.tools.ToolService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
@@ -35,6 +36,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+
 @Service
 @RequiredArgsConstructor
 public class UnifiedAgentService {
@@ -46,6 +48,7 @@ public class UnifiedAgentService {
 
     private final MemorySaver memorySaver;
     private final ToolService toolService;
+    private final ToolPolicyService toolPolicyService;
     private final SkillRegistryService skillRegistryService;
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
@@ -143,12 +146,13 @@ public class UnifiedAgentService {
                 HttpStatus.SERVICE_UNAVAILABLE
             );
         }
-        HumanInTheLoopHook hitlHook = HumanInTheLoopHook.builder()
-            .approvalOn(
-                ToolService.TOOL_LIST_WORKSPACES,
-                ToolConfig.builder().description("访问工作区目录前需要人工确认。").build()
-            )
-            .build();
+        HumanInTheLoopHook.Builder hitlHookBuilder = HumanInTheLoopHook.builder();
+        toolPolicyService.listTools().stream()
+            .filter(tool -> tool.approvalRequired() && tool.enabled())
+            .forEach(tool -> hitlHookBuilder.approvalOn(
+                tool.name(),
+                ToolConfig.builder().description(toolPolicyService.descriptionOf(tool.name())).build()
+            ));
 
         return ReactAgent.builder()
             .name("bilibrain-unified-agent")
@@ -156,7 +160,7 @@ public class UnifiedAgentService {
             .chatClient(chatClient)
             .instruction(UnifiedAgentPrompts.buildInstruction(activeSkills, folderId, videoBvid))
             .methodTools(bridge)
-            .hooks(hitlHook)
+            .hooks(hitlHookBuilder.build())
             .saver(memorySaver)
             .releaseThread(false)
             .build();

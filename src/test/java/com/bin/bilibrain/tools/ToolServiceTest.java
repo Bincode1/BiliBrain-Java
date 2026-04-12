@@ -7,6 +7,7 @@ import com.bin.bilibrain.model.vo.skills.SkillDetailVO;
 import com.bin.bilibrain.model.vo.tools.ToolCallResultVO;
 import com.bin.bilibrain.model.vo.tools.ToolWorkspaceVO;
 import com.bin.bilibrain.service.skills.SkillRegistryService;
+import com.bin.bilibrain.service.tools.ToolPolicyService;
 import com.bin.bilibrain.service.tools.ToolService;
 import com.bin.bilibrain.service.tools.WorkspaceService;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -26,6 +27,7 @@ class ToolServiceTest {
     @Test
     void callReadSkillReturnsSkillContentAndAuditsCall() {
         ToolCallMapper toolCallMapper = mock(ToolCallMapper.class);
+        ToolPolicyService toolPolicyService = new ToolPolicyService();
         SkillRegistryService skillRegistryService = mock(SkillRegistryService.class);
         WorkspaceService workspaceService = mock(WorkspaceService.class);
         when(skillRegistryService.getSkillDetail("java-rag")).thenReturn(
@@ -37,7 +39,13 @@ class ToolServiceTest {
             return 1;
         }).when(toolCallMapper).insert(any(ToolCall.class));
 
-        ToolService toolService = new ToolService(toolCallMapper, skillRegistryService, workspaceService, new ObjectMapper());
+        ToolService toolService = new ToolService(
+            toolCallMapper,
+            toolPolicyService,
+            skillRegistryService,
+            workspaceService,
+            new ObjectMapper()
+        );
 
         ToolCallResultVO result = toolService.callTool(new ToolCallRequest("read_skill", null, "java-rag"));
 
@@ -51,6 +59,7 @@ class ToolServiceTest {
     @Test
     void callListWorkspacesReturnsWorkspaceCatalog() {
         ToolCallMapper toolCallMapper = mock(ToolCallMapper.class);
+        ToolPolicyService toolPolicyService = new ToolPolicyService();
         SkillRegistryService skillRegistryService = mock(SkillRegistryService.class);
         WorkspaceService workspaceService = mock(WorkspaceService.class);
         when(workspaceService.listWorkspaces()).thenReturn(List.of(
@@ -62,7 +71,13 @@ class ToolServiceTest {
             return 1;
         }).when(toolCallMapper).insert(any(ToolCall.class));
 
-        ToolService toolService = new ToolService(toolCallMapper, skillRegistryService, workspaceService, new ObjectMapper());
+        ToolService toolService = new ToolService(
+            toolCallMapper,
+            toolPolicyService,
+            skillRegistryService,
+            workspaceService,
+            new ObjectMapper()
+        );
 
         ToolCallResultVO result = toolService.callTool(new ToolCallRequest("list_workspaces", null, null));
 

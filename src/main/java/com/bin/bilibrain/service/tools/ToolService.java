@@ -30,28 +30,17 @@ public class ToolService {
     private static final String STATUS_FAILED = "FAILED";
 
     private final ToolCallMapper toolCallMapper;
+    private final ToolPolicyService toolPolicyService;
     private final SkillRegistryService skillRegistryService;
     private final WorkspaceService workspaceService;
     private final ObjectMapper objectMapper;
 
     public List<ToolDefinitionVO> listTools() {
-        return List.of(
-            new ToolDefinitionVO(
-                TOOL_READ_SKILL,
-                "读取指定 skill 的描述与完整正文，用于 agent 渐进加载技能。",
-                false,
-                true
-            ),
-            new ToolDefinitionVO(
-                TOOL_LIST_WORKSPACES,
-                "读取当前已注册的工作区列表，为后续工具执行选择 workspace。",
-                false,
-                true
-            )
-        );
+        return toolPolicyService.listTools();
     }
 
     public ToolCallResultVO callTool(ToolCallRequest request) {
+        toolPolicyService.validateCall(request);
         LocalDateTime now = LocalDateTime.now();
         try {
             Map<String, Object> result = execute(request);
@@ -70,7 +59,7 @@ public class ToolService {
     }
 
     private Map<String, Object> execute(ToolCallRequest request) {
-        String toolName = normalizeToolName(request.toolName());
+        String toolName = toolPolicyService.normalizeToolName(request.toolName());
         return switch (toolName) {
             case TOOL_READ_SKILL -> readSkill(request.skillName());
             case TOOL_LIST_WORKSPACES -> listWorkspacesResult();
@@ -106,7 +95,7 @@ public class ToolService {
     private ToolCall persistCall(ToolCallRequest request, String status, Map<String, Object> result, LocalDateTime now) {
         ToolCall toolCall = ToolCall.builder()
             .workspaceId(request.workspaceId())
-            .toolName(normalizeToolName(request.toolName()))
+            .toolName(toolPolicyService.normalizeToolName(request.toolName()))
             .status(status)
             .requestJson(writeJson(request))
             .responseJson(writeJson(result))
@@ -115,13 +104,6 @@ public class ToolService {
             .build();
         toolCallMapper.insert(toolCall);
         return toolCall;
-    }
-
-    private String normalizeToolName(String toolName) {
-        if (!StringUtils.hasText(toolName)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "tool_name 不能为空", HttpStatus.BAD_REQUEST);
-        }
-        return toolName.trim().toLowerCase();
     }
 
     private String writeJson(Object value) {

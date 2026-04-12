@@ -42,7 +42,12 @@ public class AppProperties {
 
     @Data
     public static class Cors {
-        private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
+        private List<String> allowedOrigins = new ArrayList<>(List.of(
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:4173",
+            "http://127.0.0.1:4173"
+        ));
     }
 
     @Data
@@ -76,6 +81,9 @@ public class AppProperties {
         @Min(1)
         private int ingestionPollIntervalSeconds = 2;
 
+        @Min(30)
+        private int ingestionTaskStaleAfterSeconds = 1800;
+
         @Min(1)
         private int asrChunkConcurrency = 2;
 
@@ -94,6 +102,17 @@ public class AppProperties {
         private double asrSilenceMinSeconds = 0.6;
 
         private List<String> asrLanguageHints = new ArrayList<>(List.of("zh"));
+
+        @NotBlank
+        private String asrApiBaseUrl = "https://dashscope.aliyuncs.com/compatible-mode/v1";
+
+        @NotBlank
+        private String asrApiModel = "qwen3-asr-flash";
+
+        private boolean asrEnableItn = false;
+
+        @Min(5)
+        private int asrApiTimeoutSeconds = 90;
 
         @NotBlank
         private String ffmpegCommand = "ffmpeg";

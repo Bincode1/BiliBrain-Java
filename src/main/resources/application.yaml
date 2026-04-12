@@ -73,6 +73,9 @@ app:
   cors:
     allowed-origins:
       - http://localhost:5173
+      - http://127.0.0.1:5173
+      - http://localhost:4173
+      - http://127.0.0.1:4173
   catalog:
     folder-list-cache-ttl-seconds: ${FOLDER_LIST_CACHE_TTL_SECONDS:300}
     folder-videos-cache-ttl-seconds: ${FOLDER_VIDEOS_CACHE_TTL_SECONDS:300}
@@ -86,6 +89,7 @@ app:
     max-video-minutes: ${DEFAULT_MAX_VIDEO_MINUTES:30}
     ingestion-max-concurrency: ${INGESTION_MAX_CONCURRENCY:3}
     ingestion-poll-interval-seconds: ${INGESTION_POLL_INTERVAL_SECONDS:2}
+    ingestion-task-stale-after-seconds: ${INGESTION_TASK_STALE_AFTER_SECONDS:1800}
     asr-chunk-concurrency: ${ASR_CHUNK_CONCURRENCY:2}
     asr-target-chunk-seconds: ${ASR_TARGET_CHUNK_SECONDS:180}
     asr-chunk-seconds: ${ASR_CHUNK_SECONDS:240}
@@ -93,6 +97,10 @@ app:
     asr-silence-noise-db: ${ASR_SILENCE_NOISE_DB:-35}
     asr-silence-min-seconds: ${ASR_SILENCE_MIN_SECONDS:0.6}
     asr-language-hints: ${ASR_LANGUAGE_HINTS:zh}
+    asr-api-base-url: ${ASR_API_BASE_URL:https://dashscope.aliyuncs.com/compatible-mode/v1}
+    asr-api-model: ${ASR_API_MODEL:qwen3-asr-flash}
+    asr-enable-itn: ${ASR_ENABLE_ITN:false}
+    asr-api-timeout-seconds: ${ASR_API_TIMEOUT_SECONDS:90}
     ffmpeg-command: ${FFMPEG_COMMAND:ffmpeg}
     ffprobe-command: ${FFPROBE_COMMAND:ffprobe}
   retrieval:
@@ -122,7 +130,7 @@ mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.slf4j.Slf4jImpl
   global-config:
     db-config:
       id-type: assign_id
@@ -133,3 +141,6 @@ mybatis-plus:
 logging:
   level:
     com.bin.bilibrain: INFO
+    com.bin.bilibrain.mapper: WARN
+    org.apache.ibatis: WARN
+    com.baomidou.mybatisplus: WARN

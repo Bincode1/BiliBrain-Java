@@ -2,15 +2,16 @@ package com.bin.bilibrain.graph.summary;
 
 import com.alibaba.cloud.ai.graph.CompiledGraph;
 import com.bin.bilibrain.model.entity.VideoSummary;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 
 @Service
-@RequiredArgsConstructor
 public class SummaryGraphRunner {
-    @Qualifier("summaryCompiledGraph")
     private final CompiledGraph summaryCompiledGraph;
+
+    public SummaryGraphRunner(@Qualifier("summaryCompiledGraph") CompiledGraph summaryCompiledGraph) {
+        this.summaryCompiledGraph = summaryCompiledGraph;
+    }
 
     public SummaryRunResult run(String bvid) {
         var state = summaryCompiledGraph.invoke(SummaryState.initialInput(bvid))

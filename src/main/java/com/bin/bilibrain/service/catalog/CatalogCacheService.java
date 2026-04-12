@@ -4,7 +4,6 @@ import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.model.entity.Folder;
 import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.service.system.AppStateService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
@@ -22,7 +21,6 @@ import java.util.concurrent.Executor;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class CatalogCacheService {
     private static final String FOLDER_LIST_CACHE_PREFIX = "cache:folders";
     private static final String FOLDER_VIDEOS_CACHE_PREFIX = "cache:folder-videos";
@@ -30,10 +28,21 @@ public class CatalogCacheService {
     private final AppStateService appStateService;
     private final ObjectProvider<CatalogSyncService> catalogSyncServiceProvider;
     private final AppProperties appProperties;
-    @Qualifier("applicationTaskExecutor")
     private final Executor executor;
 
     private final Map<String, CompletableFuture<Void>> refreshTasks = new ConcurrentHashMap<>();
+
+    public CatalogCacheService(
+        AppStateService appStateService,
+        ObjectProvider<CatalogSyncService> catalogSyncServiceProvider,
+        AppProperties appProperties,
+        @Qualifier("applicationTaskExecutor") Executor executor
+    ) {
+        this.appStateService = appStateService;
+        this.catalogSyncServiceProvider = catalogSyncServiceProvider;
+        this.appProperties = appProperties;
+        this.executor = executor;
+    }
 
     public String folderListCacheKey(long uid) {
         return FOLDER_LIST_CACHE_PREFIX + ":" + uid;

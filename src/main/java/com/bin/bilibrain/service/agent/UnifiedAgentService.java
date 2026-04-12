@@ -8,6 +8,7 @@ import com.alibaba.cloud.ai.graph.agent.hook.hip.HumanInTheLoopHook;
 import com.alibaba.cloud.ai.graph.agent.hook.hip.ToolConfig;
 import com.alibaba.cloud.ai.graph.checkpoint.savers.MemorySaver;
 import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
+import com.bin.bilibrain.ai.client.DashScopeChatClientFactory;
 import com.bin.bilibrain.ai.prompt.UnifiedAgentPrompts;
 import com.bin.bilibrain.exception.BusinessException;
 import com.bin.bilibrain.exception.ErrorCode;
@@ -43,8 +44,7 @@ public class UnifiedAgentService {
     public static final String ROUTE_AGENT = "agent";
     public static final String MODE_AGENT = "agent";
 
-    @Qualifier("qaChatClient")
-    private final ObjectProvider<ChatClient> qaChatClientProvider;
+    private final DashScopeChatClientFactory chatClientFactory;
 
     private final MemorySaver memorySaver;
     private final ToolService toolService;
@@ -86,6 +86,26 @@ public class UnifiedAgentService {
                 HttpStatus.BAD_GATEWAY
             );
         }
+    }
+
+    public AgentStreamRuntime createStreamRuntime(
+        String conversationId,
+        Long folderId,
+        String videoBvid
+    ) {
+        UnifiedAgentToolBridge bridge = new UnifiedAgentToolBridge(
+            toolService,
+            knowledgeBaseSearchService,
+            videoSummarySearchService,
+            folderId,
+            videoBvid
+        );
+        List<SkillListItemVO> activeSkills = listActiveSkills();
+        ReactAgent agent = buildAgent(bridge, activeSkills, folderId, videoBvid);
+        RunnableConfig config = RunnableConfig.builder()
+            .threadId(conversationId)
+            .build();
+        return new AgentStreamRuntime(conversationId, activeSkills, bridge, agent, config);
     }
 
     public AgentExecutionResult resume(
@@ -138,7 +158,7 @@ public class UnifiedAgentService {
         Long folderId,
         String videoBvid
     ) {
-        ChatClient chatClient = qaChatClientProvider.getIfAvailable();
+        ChatClient chatClient = chatClientFactory.createQaClient();
         if (chatClient == null) {
             throw new BusinessException(
                 ErrorCode.OPERATION_ERROR,
@@ -199,6 +219,14 @@ public class UnifiedAgentService {
             bridge.toolEvents(),
             null
         );
+    }
+
+    public AgentExecutionResult adaptStreamResult(
+        String conversationId,
+        NodeOutput output,
+        UnifiedAgentToolBridge bridge
+    ) {
+        return adaptResult(conversationId, output, bridge);
     }
 
     private List<SkillListItemVO> listActiveSkills() {
@@ -294,5 +322,14 @@ public class UnifiedAgentService {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    public record AgentStreamRuntime(
+        String conversationId,
+        List<SkillListItemVO> activeSkills,
+        UnifiedAgentToolBridge bridge,
+        ReactAgent agent,
+        RunnableConfig config
+    ) {
     }
 }

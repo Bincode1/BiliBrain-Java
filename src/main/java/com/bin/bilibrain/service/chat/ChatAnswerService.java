@@ -1,5 +1,6 @@
 package com.bin.bilibrain.service.chat;
 
+import com.bin.bilibrain.ai.client.DashScopeChatClientFactory;
 import com.bin.bilibrain.exception.BusinessException;
 import com.bin.bilibrain.exception.ErrorCode;
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
@@ -7,8 +8,6 @@ import com.bin.bilibrain.service.retrieval.KnowledgeBaseSearchService;
 import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
@@ -29,14 +28,13 @@ public class ChatAnswerService {
         "总结", "概括", "综述", "梳理", "主要讲了什么", "核心内容", "摘要", "回顾"
     );
 
-    @Qualifier("qaChatClient")
-    private final ObjectProvider<ChatClient> qaChatClientProvider;
+    private final DashScopeChatClientFactory chatClientFactory;
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
     private final ConversationMemoryService conversationMemoryService;
 
     public boolean isAvailable() {
-        return qaChatClientProvider.getIfAvailable() != null;
+        return chatClientFactory.isAvailable();
     }
 
     public ChatAnswerResult answer(
@@ -230,7 +228,7 @@ public class ChatAnswerService {
     }
 
     private ChatClient requireChatClient() {
-        ChatClient chatClient = qaChatClientProvider.getIfAvailable();
+        ChatClient chatClient = chatClientFactory.createQaClient();
         if (chatClient == null) {
             throw new BusinessException(
                 ErrorCode.OPERATION_ERROR,

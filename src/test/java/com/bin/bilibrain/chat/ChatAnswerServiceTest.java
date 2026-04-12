@@ -1,5 +1,6 @@
 package com.bin.bilibrain.chat;
 
+import com.bin.bilibrain.ai.client.DashScopeChatClientFactory;
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
 import com.bin.bilibrain.service.chat.ChatAnswerResult;
 import com.bin.bilibrain.service.chat.ChatAnswerService;
@@ -9,7 +10,6 @@ import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.ObjectProvider;
 
 import java.util.List;
 
@@ -23,7 +23,7 @@ class ChatAnswerServiceTest {
     private ChatClient chatClient;
     private ChatClient.ChatClientRequestSpec requestSpec;
     private ChatClient.CallResponseSpec callResponseSpec;
-    private ObjectProvider<ChatClient> chatClientProvider;
+    private DashScopeChatClientFactory chatClientFactory;
     private KnowledgeBaseSearchService knowledgeBaseSearchService;
     private VideoSummarySearchService videoSummarySearchService;
     private ConversationMemoryService conversationMemoryService;
@@ -34,12 +34,12 @@ class ChatAnswerServiceTest {
         chatClient = mock(ChatClient.class);
         requestSpec = mock(ChatClient.ChatClientRequestSpec.class);
         callResponseSpec = mock(ChatClient.CallResponseSpec.class);
-        chatClientProvider = mock(ObjectProvider.class);
+        chatClientFactory = mock(DashScopeChatClientFactory.class);
         knowledgeBaseSearchService = mock(KnowledgeBaseSearchService.class);
         videoSummarySearchService = mock(VideoSummarySearchService.class);
         conversationMemoryService = mock(ConversationMemoryService.class);
 
-        when(chatClientProvider.getIfAvailable()).thenReturn(chatClient);
+        when(chatClientFactory.createQaClient()).thenReturn(chatClient);
         when(chatClient.prompt()).thenReturn(requestSpec);
         when(requestSpec.system(anyString())).thenReturn(requestSpec);
         when(requestSpec.user(anyString())).thenReturn(requestSpec);
@@ -48,7 +48,7 @@ class ChatAnswerServiceTest {
             .thenAnswer(invocation -> invocation.getArgument(1, String.class));
 
         chatAnswerService = new ChatAnswerService(
-            chatClientProvider,
+            chatClientFactory,
             knowledgeBaseSearchService,
             videoSummarySearchService,
             conversationMemoryService

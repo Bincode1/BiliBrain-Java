@@ -6,28 +6,76 @@ import com.bin.bilibrain.model.dto.chat.CreateConversationRequest;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
 import com.bin.bilibrain.service.chat.ConversationService;
+import com.alibaba.cloud.ai.graph.NodeOutput;
+import com.alibaba.cloud.ai.graph.streaming.OutputType;
+import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
 
 import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 
 @Service
-@RequiredArgsConstructor
 public class SkillAgentSseService {
     private final ConversationService conversationService;
     private final UnifiedAgentService unifiedAgentService;
     private final AgentResumeService agentResumeService;
     private final ObjectMapper objectMapper;
+    private final Executor executor;
+
+    public SkillAgentSseService(
+        ConversationService conversationService,
+        UnifiedAgentService unifiedAgentService,
+        AgentResumeService agentResumeService,
+        ObjectMapper objectMapper,
+        @Qualifier("agentTaskExecutor") Executor executor
+    ) {
+        this.conversationService = conversationService;
+        this.unifiedAgentService = unifiedAgentService;
+        this.agentResumeService = agentResumeService;
+        this.objectMapper = objectMapper;
+        this.executor = executor;
+    }
 
     public SseEmitter stream(AgentStreamRequest request) {
         SseEmitter emitter = new SseEmitter(0L);
+        executor.execute(() -> doStream(request, emitter));
+        return emitter;
+    }
+
+    public SseEmitter resume(AgentResumeStreamRequest request) {
+        SseEmitter emitter = new SseEmitter(0L);
+        executor.execute(() -> {
+            try {
+            ChatConversationVO conversation = conversationService.getConversation(request.conversationId());
+            send(emitter, "conversation", Map.of("created", false, "conversation", conversation));
+            send(emitter, "status", Map.of("stage", "resuming", "message", "正在恢复统一 Agent 执行"));
+
+            AgentExecutionResult result = agentResumeService.resume(
+                conversation.id(),
+                conversation.folderId(),
+                conversation.videoBvid(),
+                request
+            );
+            emitResult(emitter, conversation, result);
+            } catch (Exception exception) {
+                completeWithError(emitter, exception);
+            }
+        });
+        return emitter;
+    }
+
+    private void doStream(AgentStreamRequest request, SseEmitter emitter) {
         try {
             boolean created = !StringUtils.hasText(request.conversationId());
             ChatConversationVO conversation = created
@@ -43,40 +91,61 @@ public class SkillAgentSseService {
             conversationService.appendMessage(conversation.id(), "USER", request.message(), "[]");
             send(emitter, "status", Map.of("stage", "started", "message", "统一 Agent 正在分析技能、工具与知识范围"));
 
-            AgentExecutionResult result = unifiedAgentService.execute(
+            UnifiedAgentService.AgentStreamRuntime runtime = unifiedAgentService.createStreamRuntime(
                 conversation.id(),
                 conversation.folderId(),
-                conversation.videoBvid(),
-                request.message()
+                conversation.videoBvid()
             );
-            emitResult(emitter, conversation, result);
+            if (runtime == null) {
+                AgentExecutionResult result = unifiedAgentService.execute(
+                    conversation.id(),
+                    conversation.folderId(),
+                    conversation.videoBvid(),
+                    request.message()
+                );
+                emitResult(emitter, conversation, result);
+                return;
+            }
+
+            send(emitter, "skills", Map.of("items", runtime.activeSkills()));
+            AtomicReference<NodeOutput> lastOutputRef = new AtomicReference<>();
+            AtomicInteger sentSkillEvents = new AtomicInteger(0);
+            AtomicInteger sentToolEvents = new AtomicInteger(0);
+            AtomicReference<StringBuilder> streamedAnswerRef = new AtomicReference<>(new StringBuilder());
+
+            runtime.agent().stream(request.message(), runtime.config())
+                .doOnNext(output -> {
+                    lastOutputRef.set(output);
+                    emitLiveNodeOutput(emitter, runtime, output, sentSkillEvents, sentToolEvents, streamedAnswerRef.get());
+                })
+                .blockLast();
+
+            NodeOutput lastOutput = lastOutputRef.get();
+            if (lastOutput == null) {
+                throw new IllegalStateException("统一 Agent 流式执行没有返回任何输出。");
+            }
+
+            AgentExecutionResult result = unifiedAgentService.adaptStreamResult(
+                conversation.id(),
+                lastOutput,
+                runtime.bridge()
+            );
+            emitResult(emitter, conversation, result, streamedAnswerRef.get().length() > 0);
         } catch (Exception exception) {
             completeWithError(emitter, exception);
         }
-        return emitter;
-    }
-
-    public SseEmitter resume(AgentResumeStreamRequest request) {
-        SseEmitter emitter = new SseEmitter(0L);
-        try {
-            ChatConversationVO conversation = conversationService.getConversation(request.conversationId());
-            send(emitter, "conversation", Map.of("created", false, "conversation", conversation));
-            send(emitter, "status", Map.of("stage", "resuming", "message", "正在恢复统一 Agent 执行"));
-
-            AgentExecutionResult result = agentResumeService.resume(
-                conversation.id(),
-                conversation.folderId(),
-                conversation.videoBvid(),
-                request
-            );
-            emitResult(emitter, conversation, result);
-        } catch (Exception exception) {
-            completeWithError(emitter, exception);
-        }
-        return emitter;
     }
 
     private void emitResult(SseEmitter emitter, ChatConversationVO conversation, AgentExecutionResult result) throws IOException {
+        emitResult(emitter, conversation, result, false);
+    }
+
+    private void emitResult(
+        SseEmitter emitter,
+        ChatConversationVO conversation,
+        AgentExecutionResult result,
+        boolean answerAlreadyStreamed
+    ) throws IOException {
         send(emitter, "skills", Map.of("items", result.activeSkills()));
         for (var skillEvent : result.skillEvents()) {
             send(emitter, "skill", skillEvent);
@@ -96,8 +165,10 @@ public class SkillAgentSseService {
             return;
         }
 
-        for (String chunk : splitChunks(result.answer())) {
-            send(emitter, "answer", Map.of("delta", chunk));
+        if (!answerAlreadyStreamed) {
+            for (String chunk : splitChunks(result.answer())) {
+                send(emitter, "answer", Map.of("delta", chunk));
+            }
         }
 
         ChatMessageVO assistantMessage = toMessageVO(
@@ -119,6 +190,51 @@ public class SkillAgentSseService {
         ));
         send(emitter, "done", Map.of("conversation_id", conversation.id()));
         emitter.complete();
+    }
+
+    private void emitLiveNodeOutput(
+        SseEmitter emitter,
+        UnifiedAgentService.AgentStreamRuntime runtime,
+        NodeOutput output,
+        AtomicInteger sentSkillEvents,
+        AtomicInteger sentToolEvents,
+        StringBuilder streamedAnswer
+    ) {
+        try {
+            emitPendingSkillAndToolEvents(emitter, runtime, sentSkillEvents, sentToolEvents);
+
+            if (!(output instanceof StreamingOutput<?> streamingOutput)) {
+                return;
+            }
+            if (streamingOutput.getOutputType() != OutputType.AGENT_MODEL_STREAMING) {
+                return;
+            }
+            String delta = streamingOutput.chunk();
+            if (delta == null || delta.isBlank()) {
+                return;
+            }
+            streamedAnswer.append(delta);
+            send(emitter, "answer", Map.of("delta", delta));
+        } catch (IOException exception) {
+            throw new IllegalStateException("发送流式输出失败。", exception);
+        }
+    }
+
+    private void emitPendingSkillAndToolEvents(
+        SseEmitter emitter,
+        UnifiedAgentService.AgentStreamRuntime runtime,
+        AtomicInteger sentSkillEvents,
+        AtomicInteger sentToolEvents
+    ) throws IOException {
+        List<?> skillEvents = runtime.bridge().skillEvents();
+        while (sentSkillEvents.get() < skillEvents.size()) {
+            send(emitter, "skill", skillEvents.get(sentSkillEvents.getAndIncrement()));
+        }
+
+        List<?> toolEvents = runtime.bridge().toolEvents();
+        while (sentToolEvents.get() < toolEvents.size()) {
+            send(emitter, "tool", toolEvents.get(sentToolEvents.getAndIncrement()));
+        }
     }
 
     private void completeWithError(SseEmitter emitter, Exception exception) {

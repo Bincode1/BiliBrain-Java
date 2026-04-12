@@ -27,7 +27,7 @@ public class ToolPolicyService {
         new ToolPolicy(
             ToolService.TOOL_LIST_WORKSPACES,
             "读取当前已注册的工作区列表，为后续工具执行选择 workspace。",
-            true,
+            false,
             false,
             true
         )

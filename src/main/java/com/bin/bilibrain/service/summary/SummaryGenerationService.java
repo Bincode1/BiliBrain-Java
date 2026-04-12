@@ -1,9 +1,8 @@
 package com.bin.bilibrain.service.summary;
 
+import com.bin.bilibrain.ai.client.DashScopeChatClientFactory;
 import com.bin.bilibrain.model.entity.Video;
 import org.springframework.ai.chat.client.ChatClient;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -32,14 +31,14 @@ public class SummaryGenerationService {
         去除重复信息，结构清晰，不要编造未出现的内容。
         """;
 
-    private final ObjectProvider<ChatClient> summaryChatClientProvider;
+    private final DashScopeChatClientFactory chatClientFactory;
 
-    public SummaryGenerationService(@Qualifier("summaryChatClient") ObjectProvider<ChatClient> summaryChatClientProvider) {
-        this.summaryChatClientProvider = summaryChatClientProvider;
+    public SummaryGenerationService(DashScopeChatClientFactory chatClientFactory) {
+        this.chatClientFactory = chatClientFactory;
     }
 
     public boolean isAvailable() {
-        return summaryChatClientProvider.getIfAvailable() != null;
+        return chatClientFactory.isAvailable();
     }
 
     public String generateDirectSummary(Video video, String transcriptText) {
@@ -89,7 +88,7 @@ public class SummaryGenerationService {
     }
 
     private String callModel(String systemPrompt, String userPrompt) {
-        ChatClient chatClient = summaryChatClientProvider.getIfAvailable();
+        ChatClient chatClient = chatClientFactory.createSummaryClient();
         if (chatClient == null) {
             throw new IllegalStateException("摘要模型未启用，请先配置 DashScope Chat。");
         }

@@ -118,3 +118,33 @@ CREATE TABLE IF NOT EXISTS chat_conversation_context_stats (
     completion_tokens INT NOT NULL DEFAULT 0,
     updated_at TIMESTAMP NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS tool_workspaces (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    name VARCHAR(128) NOT NULL,
+    workspace_key VARCHAR(128) NOT NULL,
+    workspace_path VARCHAR(512) NOT NULL,
+    description VARCHAR(512),
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    UNIQUE KEY uk_tool_workspaces_workspace_key (workspace_key)
+);
+
+CREATE TABLE IF NOT EXISTS tool_calls (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT,
+    workspace_id BIGINT NULL,
+    tool_name VARCHAR(128) NOT NULL,
+    status VARCHAR(32) NOT NULL,
+    request_json LONGTEXT,
+    response_json LONGTEXT,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    INDEX idx_tool_calls_workspace_id_created_at (workspace_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS skill_activations (
+    skill_name VARCHAR(128) PRIMARY KEY,
+    is_active TINYINT(1) NOT NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL
+);

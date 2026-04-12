@@ -36,6 +36,13 @@ public abstract class AbstractMySqlIntegrationTest {
 
     @BeforeEach
     void resetDatabaseState() {
+        jdbcTemplate.execute("DELETE FROM tool_calls");
+        jdbcTemplate.execute("DELETE FROM tool_workspaces");
+        jdbcTemplate.execute("DELETE FROM skill_activations");
+        jdbcTemplate.execute("DELETE FROM chat_messages");
+        jdbcTemplate.execute("DELETE FROM chat_conversation_context_stats");
+        jdbcTemplate.execute("DELETE FROM chat_conversation_memory");
+        jdbcTemplate.execute("DELETE FROM chat_conversations");
         jdbcTemplate.execute("DELETE FROM ingestion_tasks");
         jdbcTemplate.execute("DELETE FROM video_pipeline");
         jdbcTemplate.execute("DELETE FROM video_summaries");

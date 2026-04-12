@@ -34,6 +34,9 @@ public class AppProperties {
     @Valid
     private Retrieval retrieval = new Retrieval();
 
+    @Valid
+    private Summary summary = new Summary();
+
     @Data
     public static class Cors {
         private List<String> allowedOrigins = new ArrayList<>(List.of("http://localhost:5173"));
@@ -119,5 +122,19 @@ public class AppProperties {
         @Min(1)
         @Max(20)
         private int searchTopK = 5;
+    }
+
+    @Data
+    public static class Summary {
+        @Min(500)
+        private int directMaxCharacters = 4000;
+
+        @Min(500)
+        private int windowMaxCharacters = 3000;
+
+        @Min(0)
+        private int windowOverlapCharacters = 300;
+
+        private double temperature = 0.2;
     }
 }

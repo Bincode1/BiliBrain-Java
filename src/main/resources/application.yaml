@@ -9,19 +9,22 @@ spring:
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAgentAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAsyncToolCallingManagerAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeAudioSpeechAutoConfiguration
-      - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeChatAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeImageAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeRerankAutoConfiguration
       - com.alibaba.cloud.ai.autoconfigure.dashscope.DashScopeVideoAutoConfiguration
   ai:
     model:
-      chat: ${SPRING_AI_MODEL_CHAT:none}
+      chat: ${SPRING_AI_MODEL_CHAT:dashscope}
       embedding: ${SPRING_AI_MODEL_EMBEDDING:none}
       audio:
         speech: ${SPRING_AI_MODEL_AUDIO_SPEECH:none}
         transcription: ${SPRING_AI_MODEL_AUDIO_TRANSCRIPTION:none}
     dashscope:
       api-key: ${DASHSCOPE_API_KEY:}
+      chat:
+        enabled: ${DASHSCOPE_CHAT_ENABLED:false}
+        options:
+          model: ${DASHSCOPE_CHAT_MODEL:qwen-plus}
       embedding:
         options:
           model: ${DASHSCOPE_EMBEDDING_MODEL:text-embedding-v4}
@@ -82,6 +85,11 @@ app:
     chunk-size: ${RETRIEVAL_CHUNK_SIZE:500}
     chunk-overlap: ${RETRIEVAL_CHUNK_OVERLAP:100}
     search-top-k: ${RETRIEVAL_SEARCH_TOP_K:5}
+  summary:
+    direct-max-characters: ${SUMMARY_DIRECT_MAX_CHARACTERS:4000}
+    window-max-characters: ${SUMMARY_WINDOW_MAX_CHARACTERS:3000}
+    window-overlap-characters: ${SUMMARY_WINDOW_OVERLAP_CHARACTERS:300}
+    temperature: ${SUMMARY_TEMPERATURE:0.2}
   storage:
     data-dir: ${DATA_DIR:./data}
     audio-dir: ${AUDIO_DIR:./data/audio}

@@ -155,6 +155,15 @@ public class PipelineStateSupport {
         updateStep(state, STEP_INDEX, "failed", Map.of("error", safeString(error)));
     }
 
+    public void markCurrentRunningStepFailed(Map<String, Map<String, Object>> state, String error) {
+        for (String step : PIPELINE_STEPS) {
+            if ("running".equals(state.get(step).get("status"))) {
+                updateStep(state, step, "failed", Map.of("error", safeString(error)));
+                return;
+            }
+        }
+    }
+
     public void hydrateAudioStep(Video video, Map<String, Map<String, Object>> state) {
         if (video == null || isBlank(video.getAudioStorageProvider()) || isBlank(video.getAudioObjectKey())) {
             return;

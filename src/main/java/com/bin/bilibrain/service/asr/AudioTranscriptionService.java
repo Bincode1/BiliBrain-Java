@@ -1,18 +1,11 @@
 package com.bin.bilibrain.service.asr;
 
-import com.alibaba.cloud.ai.dashscope.api.DashScopeAudioTranscriptionApi;
-import com.alibaba.cloud.ai.dashscope.audio.DashScopeAudioTranscriptionOptions;
+import com.bin.bilibrain.ai.client.QwenAsrClient;
 import com.bin.bilibrain.config.AppProperties;
 import lombok.RequiredArgsConstructor;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.core.env.Environment;
-import org.springframework.core.io.FileSystemResource;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.ai.audio.transcription.AudioTranscription;
-import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
-import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
-import org.springframework.ai.audio.transcription.TranscriptionModel;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -28,13 +21,13 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class AudioTranscriptionService {
-    private final ObjectProvider<TranscriptionModel> transcriptionModelProvider;
+    private final QwenAsrClient qwenAsrClient;
     private final AudioChunkPlanner audioChunkPlanner;
     private final AppProperties appProperties;
-    private final Environment environment;
 
     public AudioTranscriptionResult transcribe(Path audioPath, Consumer<AudioTranscriptionProgress> progressListener) {
         Path normalizedAudioPath = audioPath.toAbsolutePath().normalize();
@@ -89,8 +82,7 @@ public class AudioTranscriptionService {
     }
 
     public String resolveSourceModel() {
-        String configuredModel = environment.getProperty("spring.ai.dashscope.audio.transcription.options.model", "");
-        return StringUtils.hasText(configuredModel) ? "dashscope/" + configuredModel.trim() : "dashscope";
+        return qwenAsrClient.modelLabel();
     }
 
     private List<Path> materializeChunks(Path audioPath, Path tempDir, List<AudioChunkPlanner.AudioChunkSpec> chunkSpecs) {
@@ -107,6 +99,7 @@ public class AudioTranscriptionService {
         int chunkCount = chunkFiles.size();
         int concurrency = Math.max(appProperties.getProcessing().getAsrChunkConcurrency(), 1);
         List<String> results = new ArrayList<>(Collections.nCopies(chunkCount, ""));
+        log.info("ASR chunk transcription started: chunks={}, concurrency={}", chunkCount, concurrency);
 
         try (ExecutorService executor = Executors.newFixedThreadPool(concurrency)) {
             ExecutorCompletionService<ChunkText> completionService = new ExecutorCompletionService<>(executor);
@@ -118,6 +111,12 @@ public class AudioTranscriptionService {
             for (int completed = 1; completed <= chunkCount; completed++) {
                 ChunkText chunkText = completionService.take().get();
                 results.set(chunkText.index(), chunkText.text());
+                log.info(
+                    "ASR chunk completed: {}/{} ({})",
+                    completed,
+                    chunkCount,
+                    chunkFiles.get(chunkText.index()).getFileName()
+                );
                 emitProgress(progressListener, new AudioTranscriptionProgress(
                     "transcribing",
                     "正在转写音频块 " + completed + "/" + chunkCount,
@@ -137,27 +136,8 @@ public class AudioTranscriptionService {
     }
 
     private String transcribeChunk(Path chunkPath) {
-        TranscriptionModel transcriptionModel = transcriptionModelProvider.getIfAvailable();
-        if (transcriptionModel == null) {
-            throw new IllegalStateException("当前环境没有启用音频转写模型，请检查 DashScope 配置。");
-        }
-
-        AudioTranscriptionResponse response = transcriptionModel.call(buildPrompt(chunkPath));
-        AudioTranscription result = response == null ? null : response.getResult();
-        return result == null || result.getOutput() == null ? "" : result.getOutput().trim();
-    }
-
-    private AudioTranscriptionPrompt buildPrompt(Path chunkPath) {
-        DashScopeAudioTranscriptionOptions options = new DashScopeAudioTranscriptionOptions();
-        options.setFormat(DashScopeAudioTranscriptionApi.AudioFormat.MP3);
-        if (appProperties.getProcessing().getAsrLanguageHints() != null
-            && !appProperties.getProcessing().getAsrLanguageHints().isEmpty()) {
-            options.setLanguageHints(appProperties.getProcessing().getAsrLanguageHints());
-        }
-        options.setDisfluencyRemovalEnabled(true);
-        options.setPunctuationPredictionEnabled(true);
-        options.setSemanticPunctuationEnabled(true);
-        return new AudioTranscriptionPrompt(new FileSystemResource(chunkPath), options);
+        log.info("ASR chunk started: {}", chunkPath.getFileName());
+        return qwenAsrClient.transcribe(chunkPath);
     }
 
     private List<AudioTranscriptSegment> buildSegments(

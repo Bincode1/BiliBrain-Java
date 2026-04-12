@@ -1,20 +1,12 @@
 package com.bin.bilibrain.ingestion;
 
+import com.bin.bilibrain.ai.client.QwenAsrClient;
 import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.service.asr.AudioChunkPlanner;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.support.StaticListableBeanFactory;
-import org.springframework.core.env.Environment;
-import org.springframework.mock.env.MockEnvironment;
-import org.springframework.ai.audio.transcription.AudioTranscription;
-import org.springframework.ai.audio.transcription.AudioTranscriptionPrompt;
-import org.springframework.ai.audio.transcription.AudioTranscriptionResponse;
-import org.springframework.ai.audio.transcription.TranscriptionModel;
-import org.springframework.core.io.FileSystemResource;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -37,7 +29,6 @@ class AudioTranscriptionServiceTest {
     void transcribeBuildsSegmentsAndDeduplicatesChunkOverlap() throws Exception {
         AppProperties appProperties = new AppProperties();
         appProperties.getProcessing().setAsrChunkConcurrency(2);
-        appProperties.getProcessing().setAsrLanguageHints(List.of("zh"));
 
         AudioChunkPlanner planner = Mockito.spy(new AudioChunkPlanner(appProperties));
         Path inputAudio = tempDir.resolve("input.m4a");
@@ -54,28 +45,21 @@ class AudioTranscriptionServiceTest {
             return null;
         }).when(planner).extractChunk(any(Path.class), any(AudioChunkPlanner.AudioChunkSpec.class), any(Path.class));
 
-        TranscriptionModel transcriptionModel = mock(TranscriptionModel.class);
-        when(transcriptionModel.call(any(AudioTranscriptionPrompt.class))).thenAnswer(invocation -> {
-            AudioTranscriptionPrompt prompt = invocation.getArgument(0);
-            String fileName = ((FileSystemResource) prompt.getInstructions()).getFile().getName();
-            String text = fileName.contains("chunk-000")
+        QwenAsrClient qwenAsrClient = mock(QwenAsrClient.class);
+        when(qwenAsrClient.modelLabel()).thenReturn("dashscope/qwen3-asr-flash");
+        when(qwenAsrClient.transcribe(any(Path.class))).thenAnswer(invocation -> {
+            Path chunkPath = invocation.getArgument(0);
+            return chunkPath.getFileName().toString().contains("chunk-000")
                 ? "第一段内容扩展说明"
                 : "第一段内容扩展说明，第二段继续";
-            return new AudioTranscriptionResponse(new AudioTranscription(text));
         });
 
-        StaticListableBeanFactory beanFactory = new StaticListableBeanFactory();
-        beanFactory.addBean("transcriptionModel", transcriptionModel);
-        ObjectProvider<TranscriptionModel> provider = beanFactory.getBeanProvider(TranscriptionModel.class);
-        Environment environment = new MockEnvironment()
-            .withProperty("spring.ai.dashscope.audio.transcription.options.model", "paraformer-v2");
-
-        AudioTranscriptionService service = new AudioTranscriptionService(provider, planner, appProperties, environment);
+        AudioTranscriptionService service = new AudioTranscriptionService(qwenAsrClient, planner, appProperties);
         List<AudioTranscriptionService.AudioTranscriptionProgress> progressEvents = new CopyOnWriteArrayList<>();
 
         AudioTranscriptionService.AudioTranscriptionResult result = service.transcribe(inputAudio, progressEvents::add);
 
-        assertThat(result.model()).isEqualTo("dashscope/paraformer-v2");
+        assertThat(result.model()).isEqualTo("dashscope/qwen3-asr-flash");
         assertThat(result.chunkCount()).isEqualTo(2);
         assertThat(result.segmentCount()).isEqualTo(2);
         assertThat(result.text()).isEqualTo("第一段内容扩展说明\n\n第二段继续");

@@ -6,6 +6,7 @@ import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 @Mapper
@@ -28,6 +29,15 @@ public interface IngestionTaskMapper extends BaseMapper<IngestionTask> {
         LIMIT #{limit}
         """)
     List<IngestionTask> findQueuedTasks(int limit);
+
+    @Select("""
+        SELECT *
+        FROM ingestion_tasks
+        WHERE status IN ('queued', 'running')
+          AND updated_at < #{cutoff}
+        ORDER BY updated_at ASC, task_id ASC
+        """)
+    List<IngestionTask> findStaleActiveTasks(LocalDateTime cutoff);
 
     @Delete("DELETE FROM ingestion_tasks WHERE bvid = #{bvid}")
     void deleteByBvid(String bvid);

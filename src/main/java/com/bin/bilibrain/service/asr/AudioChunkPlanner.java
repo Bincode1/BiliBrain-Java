@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -201,9 +202,11 @@ public class AudioChunkPlanner {
     private CommandResult runCommand(List<String> command) {
         try {
             Process process = new ProcessBuilder(command).start();
+            CompletableFuture<String> stdoutFuture = readStream(process.getInputStream());
+            CompletableFuture<String> stderrFuture = readStream(process.getErrorStream());
             int exitCode = process.waitFor();
-            String stdout = new String(process.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
-            String stderr = new String(process.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+            String stdout = stdoutFuture.join();
+            String stderr = stderrFuture.join();
             return new CommandResult(exitCode, stdout, stderr);
         } catch (IOException exception) {
             throw new IllegalStateException("执行系统命令失败: " + command.getFirst(), exception);
@@ -211,6 +214,16 @@ public class AudioChunkPlanner {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("系统命令执行被中断。", exception);
         }
+    }
+
+    private CompletableFuture<String> readStream(java.io.InputStream inputStream) {
+        return CompletableFuture.supplyAsync(() -> {
+            try (inputStream) {
+                return new String(inputStream.readAllBytes(), StandardCharsets.UTF_8);
+            } catch (IOException exception) {
+                throw new IllegalStateException("读取系统命令输出失败。", exception);
+            }
+        });
     }
 
     private double round3(double value) {

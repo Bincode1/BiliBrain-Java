@@ -12,7 +12,6 @@ import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.mapper.VideoSummaryMapper;
 import com.bin.bilibrain.model.vo.ingestion.ResetAllVideosResponse;
 import com.bin.bilibrain.service.retrieval.VectorSearchService;
-import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -26,7 +25,6 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
 
 @Service
-@RequiredArgsConstructor
 public class IngestionQueueService {
     private final IngestionTaskMapper ingestionTaskMapper;
     private final VideoMapper videoMapper;
@@ -36,11 +34,32 @@ public class IngestionQueueService {
     private final IngestionDispatcherService ingestionDispatcherService;
     private final VectorSearchService vectorSearchService;
     private final JdbcTemplate jdbcTemplate;
-    @Qualifier("applicationTaskExecutor")
     private final Executor executor;
 
     private final Map<String, CompletableFuture<Void>> resetTasks = new ConcurrentHashMap<>();
     private final Map<String, ResetTaskState> resetStates = new ConcurrentHashMap<>();
+
+    public IngestionQueueService(
+        IngestionTaskMapper ingestionTaskMapper,
+        VideoMapper videoMapper,
+        TranscriptMapper transcriptMapper,
+        VideoSummaryMapper videoSummaryMapper,
+        VideoPipelineMapper videoPipelineMapper,
+        IngestionDispatcherService ingestionDispatcherService,
+        VectorSearchService vectorSearchService,
+        JdbcTemplate jdbcTemplate,
+        @Qualifier("applicationTaskExecutor") Executor executor
+    ) {
+        this.ingestionTaskMapper = ingestionTaskMapper;
+        this.videoMapper = videoMapper;
+        this.transcriptMapper = transcriptMapper;
+        this.videoSummaryMapper = videoSummaryMapper;
+        this.videoPipelineMapper = videoPipelineMapper;
+        this.ingestionDispatcherService = ingestionDispatcherService;
+        this.vectorSearchService = vectorSearchService;
+        this.jdbcTemplate = jdbcTemplate;
+        this.executor = executor;
+    }
 
     public boolean enqueueProcessing(String bvid) {
         Video video = requireVideo(bvid);
@@ -48,7 +67,7 @@ public class IngestionQueueService {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "失效视频无法开始处理。", HttpStatus.BAD_REQUEST);
         }
 
-        IngestionTask activeTask = ingestionTaskMapper.findLatestActiveByBvid(bvid);
+        IngestionTask activeTask = ingestionDispatcherService.findLatestLiveTask(bvid);
         if (activeTask != null) {
             return false;
         }

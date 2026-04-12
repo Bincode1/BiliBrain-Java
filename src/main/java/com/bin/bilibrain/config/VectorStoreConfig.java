@@ -10,7 +10,6 @@ import org.springframework.ai.vectorstore.VectorStore;
 import org.springframework.ai.vectorstore.milvus.MilvusVectorStore;
 import org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusServiceClientProperties;
 import org.springframework.ai.vectorstore.milvus.autoconfigure.MilvusVectorStoreProperties;
-import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
@@ -67,7 +66,6 @@ public class VectorStoreConfig {
     }
 
     @Bean
-    @ConditionalOnBean({MilvusServiceClient.class, EmbeddingModel.class})
     public VectorStore milvusVectorStore(
         MilvusServiceClient milvusServiceClient,
         EmbeddingModel embeddingModel,

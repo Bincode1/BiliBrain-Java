@@ -69,7 +69,7 @@ public class PipelineStatusService {
         Transcript transcript = transcriptMapper.findByBvid(video.getBvid());
         VideoSummary summary = videoSummaryMapper.selectById(video.getBvid());
         VideoPipeline pipeline = videoPipelineMapper.selectById(video.getBvid());
-        IngestionTask activeTask = ingestionTaskMapper.findLatestActiveByBvid(video.getBvid());
+        IngestionTask activeTask = ingestionDispatcherService.findLatestLiveTask(video.getBvid());
         Map<String, Map<String, Object>> state = loadState(video, pipeline, transcript);
         String pipelineOverallStatus = pipelineStateSupport.overallStatus(state);
 

@@ -3,11 +3,12 @@ package com.bin.bilibrain.service.ingestion;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.graph.ingestion.IngestionGraphRunner;
+import com.bin.bilibrain.graph.ingestion.IngestionGraphStateStore;
 import com.bin.bilibrain.model.entity.IngestionTask;
+import com.bin.bilibrain.model.entity.Transcript;
 import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.mapper.IngestionTaskMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
@@ -22,17 +23,35 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class IngestionDispatcherService {
     private final IngestionTaskMapper ingestionTaskMapper;
     private final VideoMapper videoMapper;
     private final IngestionGraphRunner ingestionGraphRunner;
+    private final IngestionGraphStateStore ingestionGraphStateStore;
+    private final PipelineStateSupport pipelineStateSupport;
     private final AppProperties appProperties;
-    @Qualifier("applicationTaskExecutor")
     private final Executor executor;
 
     private final Map<String, CompletableFuture<Void>> runtimeTasks = new ConcurrentHashMap<>();
     private final AtomicBoolean dispatching = new AtomicBoolean(false);
+
+    public IngestionDispatcherService(
+        IngestionTaskMapper ingestionTaskMapper,
+        VideoMapper videoMapper,
+        IngestionGraphRunner ingestionGraphRunner,
+        IngestionGraphStateStore ingestionGraphStateStore,
+        PipelineStateSupport pipelineStateSupport,
+        AppProperties appProperties,
+        @Qualifier("applicationTaskExecutor") Executor executor
+    ) {
+        this.ingestionTaskMapper = ingestionTaskMapper;
+        this.videoMapper = videoMapper;
+        this.ingestionGraphRunner = ingestionGraphRunner;
+        this.ingestionGraphStateStore = ingestionGraphStateStore;
+        this.pipelineStateSupport = pipelineStateSupport;
+        this.appProperties = appProperties;
+        this.executor = executor;
+    }
 
     public void kick() {
         if (dispatching.compareAndSet(false, true)) {
@@ -47,6 +66,32 @@ public class IngestionDispatcherService {
     public boolean hasRunningTask(String bvid) {
         CompletableFuture<Void> future = runtimeTasks.get(bvid);
         return future != null && !future.isDone();
+    }
+
+    public IngestionTask findLatestLiveTask(String bvid) {
+        reconcileStaleTasks();
+        IngestionTask task = ingestionTaskMapper.findLatestActiveByBvid(bvid);
+        if (task == null) {
+            return null;
+        }
+        if (isStale(task) && !hasRunningTask(bvid)) {
+            markTaskFinished(task.getTaskId(), "failed", "处理任务长时间未更新，已自动标记为失败，请重试。");
+            return null;
+        }
+        return task;
+    }
+
+    public void reconcileStaleTasks() {
+        LocalDateTime cutoff = LocalDateTime.now()
+            .minusSeconds(Math.max(appProperties.getProcessing().getIngestionTaskStaleAfterSeconds(), 30));
+        for (IngestionTask task : ingestionTaskMapper.findStaleActiveTasks(cutoff)) {
+            if (hasRunningTask(task.getBvid())) {
+                continue;
+            }
+            String error = "处理任务长时间未更新，已自动标记为失败，请重试。";
+            markTaskFinished(task.getTaskId(), "failed", error);
+            markPipelineFailed(task.getBvid(), error);
+        }
     }
 
     public void cancelProcessing(String bvid) {
@@ -65,6 +110,7 @@ public class IngestionDispatcherService {
 
     private void dispatchLoop() {
         try {
+            reconcileStaleTasks();
             boolean launched;
             do {
                 launched = false;
@@ -151,6 +197,28 @@ public class IngestionDispatcherService {
                 .set(IngestionTask::getUpdatedAt, now)
         );
     }
-}
 
+    private boolean isStale(IngestionTask task) {
+        if (task == null || task.getUpdatedAt() == null) {
+            return false;
+        }
+        long staleAfterSeconds = Math.max(appProperties.getProcessing().getIngestionTaskStaleAfterSeconds(), 30);
+        return task.getUpdatedAt().isBefore(LocalDateTime.now().minusSeconds(staleAfterSeconds));
+    }
+
+    private void markPipelineFailed(String bvid, String error) {
+        try {
+            Video video = videoMapper.selectById(bvid);
+            if (video == null) {
+                return;
+            }
+            Transcript transcript = ingestionGraphStateStore.findTranscript(bvid);
+            var state = ingestionGraphStateStore.loadPipelineState(bvid, video, transcript);
+            pipelineStateSupport.markCurrentRunningStepFailed(state, error);
+            ingestionGraphStateStore.savePipelineState(bvid, state);
+        } catch (Exception exception) {
+            log.warn("failed to update stale pipeline state for {}", bvid, exception);
+        }
+    }
+}
 

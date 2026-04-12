@@ -33,12 +33,6 @@ public class IndexChunksNode implements NodeAction {
         Map<String, Map<String, Object>> pipelineState = stateStore.loadPipelineState(bvid, video, transcript);
         List<Document> chunkDocuments = IngestionState.resolveChunkDocuments(state);
 
-        if (!vectorSearchService.isAvailable()) {
-            pipelineStateSupport.markIndexPending(pipelineState, "向量索引未启用，当前仅保留转写结果");
-            stateStore.savePipelineState(bvid, pipelineState);
-            return buildUpdates(video, 0);
-        }
-
         try {
             pipelineStateSupport.markIndexRunning(pipelineState, "正在写入 Milvus");
             stateStore.savePipelineState(bvid, pipelineState);

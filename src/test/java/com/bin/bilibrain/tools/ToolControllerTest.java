@@ -2,7 +2,10 @@ package com.bin.bilibrain.tools;
 
 import com.bin.bilibrain.controller.ToolController;
 import com.bin.bilibrain.exception.GlobalExceptionHandler;
+import com.bin.bilibrain.model.vo.tools.ToolCallResultVO;
+import com.bin.bilibrain.model.vo.tools.ToolDefinitionVO;
 import com.bin.bilibrain.model.vo.tools.ToolWorkspaceVO;
+import com.bin.bilibrain.service.tools.ToolService;
 import com.bin.bilibrain.service.tools.WorkspaceService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -30,6 +33,21 @@ class ToolControllerTest {
     @MockitoBean
     private WorkspaceService workspaceService;
 
+    @MockitoBean
+    private ToolService toolService;
+
+    @Test
+    void listToolsReturnsCatalog() throws Exception {
+        when(toolService.listTools()).thenReturn(List.of(
+            new ToolDefinitionVO("read_skill", "读取 skill 正文", false, true)
+        ));
+
+        mockMvc.perform(get("/api/tools"))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data[0].name").value("read_skill"));
+    }
+
     @Test
     void listWorkspacesReturnsItems() throws Exception {
         when(workspaceService.listWorkspaces()).thenReturn(List.of(
@@ -56,5 +74,21 @@ class ToolControllerTest {
             .andExpect(status().isOk())
             .andExpect(jsonPath("$.data.id").value(2))
             .andExpect(jsonPath("$.data.workspace_key").value("research-space"));
+    }
+
+    @Test
+    void callToolReturnsToolResult() throws Exception {
+        when(toolService.callTool(any())).thenReturn(
+            new ToolCallResultVO(8L, "read_skill", "SUCCESS", java.util.Map.of("name", "java-rag"), "2026-04-12T13:01:00")
+        );
+
+        mockMvc.perform(post("/api/tools/call")
+                .contentType("application/json")
+                .content("""
+                    {"tool_name":"read_skill","skill_name":"java-rag"}
+                    """))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.data.call_id").value(8))
+            .andExpect(jsonPath("$.data.result.name").value("java-rag"));
     }
 }

@@ -43,8 +43,8 @@ public class TranscriptChunkService {
             metadata.put("up_name", valueOrEmpty(video.getUpName()));
             metadata.put("source_kind", "chunk");
             documents.add(new Document(
-                chunk.text(),
                 video.getBvid() + "#chunk-" + chunk.chunkIndex(),
+                chunk.text(),
                 metadata
             ));
         }

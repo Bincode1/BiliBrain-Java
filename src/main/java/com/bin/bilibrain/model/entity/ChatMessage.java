@@ -23,6 +23,8 @@ public class ChatMessage {
 
     private String content;
     private String sourcesJson;
+    private String answerMode;
+    private String routeMode;
 
     private LocalDateTime createdAt;
 }

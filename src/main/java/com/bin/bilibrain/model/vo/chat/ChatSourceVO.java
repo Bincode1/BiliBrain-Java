@@ -4,14 +4,14 @@ import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
-public record ChatConversationVO(
-    String id,
-    String title,
-    String conversationType,
+public record ChatSourceVO(
+    String sourceType,
+    String bvid,
     Long folderId,
-    String videoBvid,
-    int messageCount,
-    String lastMessagePreview,
-    String updatedAt
+    String videoTitle,
+    String upName,
+    Double startSeconds,
+    Double endSeconds,
+    String excerpt
 ) {
 }

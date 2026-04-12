@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 public record CreateConversationRequest(
     String title,
     String conversationType,
+    Long folderId,
     String videoBvid
 ) {
 }

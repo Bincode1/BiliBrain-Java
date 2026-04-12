@@ -85,6 +85,7 @@ CREATE TABLE IF NOT EXISTS chat_conversations (
     id VARCHAR(64) PRIMARY KEY,
     title VARCHAR(255) NOT NULL,
     conversation_type VARCHAR(32) NOT NULL,
+    folder_id BIGINT NULL,
     video_bvid VARCHAR(32) NULL,
     created_at TIMESTAMP NOT NULL,
     updated_at TIMESTAMP NOT NULL,
@@ -97,6 +98,8 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     role VARCHAR(32) NOT NULL,
     content LONGTEXT NOT NULL,
     sources_json LONGTEXT,
+    answer_mode VARCHAR(32),
+    route_mode VARCHAR(32),
     created_at TIMESTAMP NOT NULL,
     INDEX idx_chat_messages_conversation_id_created_at (conversation_id, created_at)
 );

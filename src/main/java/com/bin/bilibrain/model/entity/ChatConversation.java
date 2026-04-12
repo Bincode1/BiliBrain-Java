@@ -21,6 +21,7 @@ public class ChatConversation {
 
     private String title;
     private String conversationType;
+    private Long folderId;
     private String videoBvid;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

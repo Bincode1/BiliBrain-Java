@@ -62,6 +62,6 @@ public class ChatController {
 
     @PostMapping(path = "/api/ask/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
     public SseEmitter askStream(@Valid @RequestBody AskStreamRequest request) {
-        return sseEventService.streamDirectAnswer(request);
+        return sseEventService.streamAnswer(request);
     }
 }

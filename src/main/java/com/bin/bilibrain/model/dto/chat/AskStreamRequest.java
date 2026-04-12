@@ -8,6 +8,7 @@ import jakarta.validation.constraints.NotBlank;
 public record AskStreamRequest(
     String conversationId,
     String conversationType,
+    Long folderId,
     String videoBvid,
     @NotBlank(message = "message 不能为空")
     String message

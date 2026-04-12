@@ -49,6 +49,7 @@ public class ConversationService {
         ChatConversation conversation = ChatConversation.builder()
             .title(defaultTitle(request.title()))
             .conversationType(defaultConversationType(request.conversationType()))
+            .folderId(request.folderId())
             .videoBvid(blankToNull(request.videoBvid()))
             .createdAt(now)
             .updatedAt(now)
@@ -106,6 +107,17 @@ public class ConversationService {
     }
 
     public ChatMessage appendMessage(String conversationId, String role, String content, String sourcesJson) {
+        return appendMessage(conversationId, role, content, sourcesJson, "", "");
+    }
+
+    public ChatMessage appendMessage(
+        String conversationId,
+        String role,
+        String content,
+        String sourcesJson,
+        String answerMode,
+        String routeMode
+    ) {
         ChatConversation conversation = requireConversation(conversationId);
         LocalDateTime now = LocalDateTime.now();
         ChatMessage message = ChatMessage.builder()
@@ -113,6 +125,8 @@ public class ConversationService {
             .role(role)
             .content(content)
             .sourcesJson(safeJson(sourcesJson))
+            .answerMode(blankToEmpty(answerMode))
+            .routeMode(blankToEmpty(routeMode))
             .createdAt(now)
             .build();
         chatMessageMapper.insert(message);
@@ -188,6 +202,7 @@ public class ConversationService {
             conversation.getId(),
             conversation.getTitle(),
             conversation.getConversationType(),
+            conversation.getFolderId(),
             nullToBlank(conversation.getVideoBvid()),
             Math.toIntExact(count),
             preview,
@@ -201,6 +216,9 @@ public class ConversationService {
             message.getConversationId(),
             message.getRole(),
             message.getContent(),
+            safeJson(message.getSourcesJson()),
+            blankToEmpty(message.getAnswerMode()),
+            blankToEmpty(message.getRouteMode()),
             formatDateTime(message.getCreatedAt())
         );
     }
@@ -238,6 +256,10 @@ public class ConversationService {
 
     private String safeJson(String value) {
         return StringUtils.hasText(value) ? value : "[]";
+    }
+
+    private String blankToEmpty(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "";
     }
 
     private String blankToNull(String value) {

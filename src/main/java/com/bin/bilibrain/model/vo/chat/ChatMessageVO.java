@@ -9,6 +9,9 @@ public record ChatMessageVO(
     String conversationId,
     String role,
     String content,
+    String sourcesJson,
+    String answerMode,
+    String routeMode,
     String createdAt
 ) {
 }

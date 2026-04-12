@@ -80,3 +80,38 @@ CREATE TABLE IF NOT EXISTS ingestion_tasks (
     INDEX idx_ingestion_tasks_bvid_status (bvid, status),
     INDEX idx_ingestion_tasks_status_created_at (status, created_at)
 );
+
+CREATE TABLE IF NOT EXISTS chat_conversations (
+    id VARCHAR(64) PRIMARY KEY,
+    title VARCHAR(255) NOT NULL,
+    conversation_type VARCHAR(32) NOT NULL,
+    video_bvid VARCHAR(32) NULL,
+    created_at TIMESTAMP NOT NULL,
+    updated_at TIMESTAMP NOT NULL,
+    INDEX idx_chat_conversations_updated_at (updated_at)
+);
+
+CREATE TABLE IF NOT EXISTS chat_messages (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    conversation_id VARCHAR(64) NOT NULL,
+    role VARCHAR(32) NOT NULL,
+    content LONGTEXT NOT NULL,
+    sources_json LONGTEXT,
+    created_at TIMESTAMP NOT NULL,
+    INDEX idx_chat_messages_conversation_id_created_at (conversation_id, created_at)
+);
+
+CREATE TABLE IF NOT EXISTS chat_conversation_memory (
+    conversation_id VARCHAR(64) PRIMARY KEY,
+    memory_text LONGTEXT,
+    source_message_count INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS chat_conversation_context_stats (
+    conversation_id VARCHAR(64) PRIMARY KEY,
+    total_messages INT NOT NULL DEFAULT 0,
+    prompt_tokens INT NOT NULL DEFAULT 0,
+    completion_tokens INT NOT NULL DEFAULT 0,
+    updated_at TIMESTAMP NOT NULL
+);

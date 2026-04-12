@@ -7,21 +7,19 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 
-@TableName("chat_sessions")
+@TableName("chat_conversation_memory")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ChatSession {
-    @TableId(type = IdType.ASSIGN_UUID)
-    private String id;
+public class ChatConversationMemory {
+    @TableId(value = "conversation_id", type = IdType.INPUT)
+    private String conversationId;
 
-    private String title;             // 会话标题
-    private String videoBvid;         // 关联视频 (可选)
-    private String type;              // VIDEO / GENERAL
-
-    private LocalDateTime createdAt;
+    private String memoryText;
+    private Integer sourceMessageCount;
     private LocalDateTime updatedAt;
 }

@@ -95,8 +95,6 @@ workspaces/
 /src/main/java/com/bin/bilibrain/entity/ChatMessage.java
 /src/main/java/com/bin/bilibrain/entity/ChatSession.java
 /src/main/java/com/bin/bilibrain/entity/FolderVideo.java
-/src/main/java/com/bin/bilibrain/mapper/ChatMessageMapper.java
-/src/main/java/com/bin/bilibrain/mapper/ChatSessionMapper.java
 /src/main/java/com/bin/bilibrain/mapper/FolderVideoMapper.java
 /src/main/java/com/bin/bilibrain/service/DocumentSplitter.java
 /src/main/java/com/bin/bilibrain/service/VectorSearchService.java

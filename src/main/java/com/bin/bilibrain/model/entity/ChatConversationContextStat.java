@@ -7,22 +7,20 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 
-@TableName("chat_messages")
+@TableName("chat_conversation_context_stats")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ChatMessage {
-    @TableId(type = IdType.AUTO)
-    private Long id;
-
+public class ChatConversationContextStat {
+    @TableId(value = "conversation_id", type = IdType.INPUT)
     private String conversationId;
-    private String role;
 
-    private String content;
-    private String sourcesJson;
-
-    private LocalDateTime createdAt;
+    private Integer totalMessages;
+    private Integer promptTokens;
+    private Integer completionTokens;
+    private LocalDateTime updatedAt;
 }

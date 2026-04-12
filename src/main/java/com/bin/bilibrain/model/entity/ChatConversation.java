@@ -7,22 +7,21 @@ import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+
 import java.time.LocalDateTime;
 
-@TableName("chat_messages")
+@TableName("chat_conversations")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-public class ChatMessage {
-    @TableId(type = IdType.AUTO)
-    private Long id;
+public class ChatConversation {
+    @TableId(type = IdType.ASSIGN_UUID)
+    private String id;
 
-    private String conversationId;
-    private String role;
-
-    private String content;
-    private String sourcesJson;
-
+    private String title;
+    private String conversationType;
+    private String videoBvid;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }

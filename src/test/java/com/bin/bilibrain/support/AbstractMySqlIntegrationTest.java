@@ -36,6 +36,8 @@ public abstract class AbstractMySqlIntegrationTest {
 
     @BeforeEach
     void resetDatabaseState() {
+        jdbcTemplate.execute("DELETE FROM GRAPH_CHECKPOINT");
+        jdbcTemplate.execute("DELETE FROM GRAPH_THREAD");
         jdbcTemplate.execute("DELETE FROM tool_calls");
         jdbcTemplate.execute("DELETE FROM tool_workspaces");
         jdbcTemplate.execute("DELETE FROM skill_activations");
@@ -53,6 +55,8 @@ public abstract class AbstractMySqlIntegrationTest {
         jdbcTemplate.execute("DELETE FROM processing_settings");
         resetDirectory(appProperties.getStorage().getAudioDir());
         resetDirectory(appProperties.getStorage().getUploadDir());
+        resetDirectory(appProperties.getStorage().getToolsWorkspaceRoot());
+        resetDirectory(appProperties.getStorage().getSkillsRoot());
     }
 
     private void resetDirectory(Path directory) {

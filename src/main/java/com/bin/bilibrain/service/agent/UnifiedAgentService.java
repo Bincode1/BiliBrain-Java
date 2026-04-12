@@ -187,6 +187,7 @@ public class UnifiedAgentService {
             );
         }
 
+        pendingApprovalStore.remove(conversationId);
         return new AgentExecutionResult(
             extractAssistantAnswer(output),
             ROUTE_AGENT,

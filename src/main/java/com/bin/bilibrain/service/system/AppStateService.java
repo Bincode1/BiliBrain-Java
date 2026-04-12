@@ -20,10 +20,22 @@ public class AppStateService {
     private final ObjectMapper objectMapper;
 
     public <T> T loadJson(String stateKey, TypeReference<T> typeReference, Supplier<T> defaultSupplier) {
+        return loadJsonOptional(stateKey, typeReference).orElseGet(defaultSupplier);
+    }
+
+    public <T> Optional<T> loadJsonOptional(String stateKey, TypeReference<T> typeReference) {
         AppState entity = appStateMapper.selectById(stateKey);
         if (entity == null || !StringUtils.hasText(entity.getStateValue())) {
-            return defaultSupplier.get();
+            return Optional.empty();
         }
+        return Optional.of(readJson(entity, stateKey, typeReference));
+    }
+
+    public void delete(String stateKey) {
+        appStateMapper.deleteById(stateKey);
+    }
+
+    private <T> T readJson(AppState entity, String stateKey, TypeReference<T> typeReference) {
         try {
             return objectMapper.readValue(entity.getStateValue(), typeReference);
         } catch (JsonProcessingException exception) {

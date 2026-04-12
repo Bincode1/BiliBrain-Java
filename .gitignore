@@ -60,6 +60,7 @@ src/main/resources/application-*.yaml
 # Claude Code
 .claude/
 AGENTS.md
+SPRINGBOOT_PROJECT_STANDARD.md
 
 # Help file
 HELP.md

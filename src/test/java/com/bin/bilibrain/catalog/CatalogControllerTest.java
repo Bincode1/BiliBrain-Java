@@ -1,9 +1,9 @@
 package com.bin.bilibrain.catalog;
 
-import com.bin.bilibrain.auth.AuthService;
-import com.bin.bilibrain.auth.AuthSessionResponse;
-import com.bin.bilibrain.entity.Folder;
-import com.bin.bilibrain.entity.Video;
+import com.bin.bilibrain.model.vo.auth.AuthSessionVO;
+import com.bin.bilibrain.service.auth.AuthService;
+import com.bin.bilibrain.model.entity.Folder;
+import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.mapper.FolderMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
@@ -45,7 +45,7 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
     @BeforeEach
     void setUp() {
         reset(authService);
-        when(authService.getSession()).thenReturn(new AuthSessionResponse(false, null, null));
+        when(authService.getSession()).thenReturn(new AuthSessionVO(false, null, null));
     }
 
     @Test
@@ -78,12 +78,13 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(get("/api/folders").queryParam("uid", "9527"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.folders[0].folder_id").value(1001))
-            .andExpect(jsonPath("$.folders[0].title").value("Java AI"))
-            .andExpect(jsonPath("$.folders[0].media_count").value(12))
-            .andExpect(jsonPath("$.stats.folder_count").value(1))
-            .andExpect(jsonPath("$.stats.video_count").value(1))
-            .andExpect(jsonPath("$.cached").value(true));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.folders[0].folder_id").value(1001))
+            .andExpect(jsonPath("$.data.folders[0].title").value("Java AI"))
+            .andExpect(jsonPath("$.data.folders[0].media_count").value(12))
+            .andExpect(jsonPath("$.data.stats.folder_count").value(1))
+            .andExpect(jsonPath("$.data.stats.video_count").value(1))
+            .andExpect(jsonPath("$.data.cached").value(true));
     }
 
     @Test
@@ -105,13 +106,14 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
             .updatedAt(LocalDateTime.now())
             .build());
 
-        when(authService.getSession()).thenReturn(new AuthSessionResponse(true, "BinCode", 9527L));
+        when(authService.getSession()).thenReturn(new AuthSessionVO(true, "BinCode", 9527L));
 
         mockMvc.perform(get("/api/folders"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.folders.length()").value(1))
-            .andExpect(jsonPath("$.folders[0].folder_id").value(1001))
-            .andExpect(jsonPath("$.folders[0].title").value("Java AI"));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.folders.length()").value(1))
+            .andExpect(jsonPath("$.data.folders[0].folder_id").value(1001))
+            .andExpect(jsonPath("$.data.folders[0].title").value("Java AI"));
     }
 
     @Test
@@ -141,16 +143,17 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(get("/api/folders/2002/videos"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.folder.folder_id").value(2002))
-            .andExpect(jsonPath("$.fields[0]").value("bvid"))
-            .andExpect(jsonPath("$.videos[0].bvid").value("BV1xy4111111"))
-            .andExpect(jsonPath("$.videos[0].title").value("BiliBrain Java 重构"))
-            .andExpect(jsonPath("$.videos[0].up_name").value("BinCode"))
-            .andExpect(jsonPath("$.videos[0].sync_status").value("indexed"))
-            .andExpect(jsonPath("$.videos[0].has_summary").value(false))
-            .andExpect(jsonPath("$.videos[0].pipeline.audio.status").value("pending"))
-            .andExpect(jsonPath("$.cached").value(true))
-            .andExpect(jsonPath("$.stale").value(false));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.folder.folder_id").value(2002))
+            .andExpect(jsonPath("$.data.fields[0]").value("bvid"))
+            .andExpect(jsonPath("$.data.videos[0].bvid").value("BV1xy4111111"))
+            .andExpect(jsonPath("$.data.videos[0].title").value("BiliBrain Java 重构"))
+            .andExpect(jsonPath("$.data.videos[0].up_name").value("BinCode"))
+            .andExpect(jsonPath("$.data.videos[0].sync_status").value("indexed"))
+            .andExpect(jsonPath("$.data.videos[0].has_summary").value(false))
+            .andExpect(jsonPath("$.data.videos[0].pipeline.audio.status").value("pending"))
+            .andExpect(jsonPath("$.data.cached").value(true))
+            .andExpect(jsonPath("$.data.stale").value(false));
     }
 
     @Test
@@ -168,3 +171,4 @@ class CatalogControllerTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

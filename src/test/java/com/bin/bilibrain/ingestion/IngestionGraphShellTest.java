@@ -1,7 +1,7 @@
 package com.bin.bilibrain.ingestion;
 
-import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.entity.VideoPipeline;
+import com.bin.bilibrain.model.entity.Video;
+import com.bin.bilibrain.model.entity.VideoPipeline;
 import com.bin.bilibrain.mapper.TranscriptMapper;
 import com.bin.bilibrain.graph.ingestion.IngestionGraphRunner;
 import com.bin.bilibrain.mapper.VideoMapper;
@@ -145,3 +145,4 @@ class IngestionGraphShellTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

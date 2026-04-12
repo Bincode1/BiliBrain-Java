@@ -1,9 +1,9 @@
 package com.bin.bilibrain.graph.ingestion;
 
-import com.bin.bilibrain.entity.Transcript;
-import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.entity.VideoPipeline;
-import com.bin.bilibrain.ingestion.PipelineStateSupport;
+import com.bin.bilibrain.model.entity.Transcript;
+import com.bin.bilibrain.model.entity.Video;
+import com.bin.bilibrain.model.entity.VideoPipeline;
+import com.bin.bilibrain.service.ingestion.PipelineStateSupport;
 import com.bin.bilibrain.mapper.TranscriptMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
@@ -94,3 +94,4 @@ public class IngestionGraphStateStore {
         return transcriptMapper.findByBvid(transcript.getBvid());
     }
 }
+

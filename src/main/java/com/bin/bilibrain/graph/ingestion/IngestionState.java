@@ -1,7 +1,7 @@
 package com.bin.bilibrain.graph.ingestion;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
-import com.bin.bilibrain.entity.Video;
+import com.bin.bilibrain.model.entity.Video;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -37,3 +37,4 @@ public final class IngestionState {
         return state.value(AUDIO_PATH, String.class).orElse("");
     }
 }
+

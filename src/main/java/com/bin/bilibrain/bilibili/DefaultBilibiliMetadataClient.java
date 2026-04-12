@@ -1,4 +1,6 @@
 package com.bin.bilibrain.bilibili;
+
+import com.bin.bilibrain.manager.bilibili.BilibiliCredentialManager;
 import lombok.RequiredArgsConstructor;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
@@ -39,7 +41,7 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     };
 
     private final WebClient.Builder webClientBuilder;
-    private final BilibiliCookieStore bilibiliCookieStore;
+    private final BilibiliCredentialManager bilibiliCredentialManager;
 
     @Override
     public List<BilibiliFolderMetadata> listFolders(long uid) {
@@ -322,11 +324,7 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     }
 
     private String buildCookieHeader() {
-        return bilibiliCookieStore.loadCookies().entrySet().stream()
-            .filter(entry -> StringUtils.hasText(entry.getValue()))
-            .map(entry -> entry.getKey() + "=" + entry.getValue().trim())
-            .reduce((left, right) -> left + "; " + right)
-            .orElse("");
+        return bilibiliCredentialManager.loadCredential().toHeaderValue();
     }
 
     private String resolveCoverUrl(String coverUrl) {

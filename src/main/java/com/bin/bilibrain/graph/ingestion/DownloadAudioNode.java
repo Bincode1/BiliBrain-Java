@@ -2,9 +2,9 @@ package com.bin.bilibrain.graph.ingestion;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
-import com.bin.bilibrain.entity.Transcript;
-import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.ingestion.PipelineStateSupport;
+import com.bin.bilibrain.model.entity.Transcript;
+import com.bin.bilibrain.model.entity.Video;
+import com.bin.bilibrain.service.ingestion.PipelineStateSupport;
 import com.bin.bilibrain.service.media.AudioDownloadService;
 import com.bin.bilibrain.service.media.AudioStorageService;
 import lombok.RequiredArgsConstructor;
@@ -80,3 +80,4 @@ public class DownloadAudioNode implements NodeAction {
         return updates;
     }
 }
+

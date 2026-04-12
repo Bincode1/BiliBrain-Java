@@ -9,7 +9,6 @@ import org.springframework.test.web.servlet.MockMvc;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
-import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -24,16 +23,16 @@ class SystemControllerTest extends AbstractMySqlIntegrationTest {
     void healthEndpointReturnsOk() throws Exception {
         mockMvc.perform(get("/api/health"))
             .andExpect(status().isOk())
-            .andExpect(content().json("""
-                {"status":"ok"}
-                """));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.status").value("ok"));
     }
 
     @Test
     void settingsEndpointReturnsDefaultSettings() throws Exception {
         mockMvc.perform(get("/api/settings"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.max_video_minutes").value(30));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.max_video_minutes").value(30));
     }
 
     @Test
@@ -44,10 +43,11 @@ class SystemControllerTest extends AbstractMySqlIntegrationTest {
                     {"max_video_minutes":45}
                     """))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.max_video_minutes").value(45));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.max_video_minutes").value(45));
 
         mockMvc.perform(get("/api/settings"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.max_video_minutes").value(45));
+            .andExpect(jsonPath("$.data.max_video_minutes").value(45));
     }
 }

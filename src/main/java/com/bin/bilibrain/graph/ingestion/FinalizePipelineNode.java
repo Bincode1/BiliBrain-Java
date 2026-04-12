@@ -2,8 +2,8 @@ package com.bin.bilibrain.graph.ingestion;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
-import com.bin.bilibrain.entity.Transcript;
-import com.bin.bilibrain.entity.Video;
+import com.bin.bilibrain.model.entity.Transcript;
+import com.bin.bilibrain.model.entity.Video;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -33,3 +33,4 @@ public class FinalizePipelineNode implements NodeAction {
         return updates;
     }
 }
+

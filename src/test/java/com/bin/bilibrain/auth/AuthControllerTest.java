@@ -4,7 +4,7 @@ import com.bin.bilibrain.bilibili.BilibiliAuthClient;
 import com.bin.bilibrain.bilibili.BilibiliQrPollPayload;
 import com.bin.bilibrain.bilibili.BilibiliQrStartPayload;
 import com.bin.bilibrain.bilibili.BilibiliSessionPayload;
-import com.bin.bilibrain.state.AppStateMapper;
+import com.bin.bilibrain.mapper.AppStateMapper;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -46,7 +46,8 @@ class AuthControllerTest extends AbstractMySqlIntegrationTest {
     void sessionEndpointReturnsLoggedOutWhenNoCookiesExist() throws Exception {
         mockMvc.perform(get("/api/auth/session"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.logged_in").value(false));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.logged_in").value(false));
     }
 
     @Test
@@ -57,9 +58,10 @@ class AuthControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(post("/api/auth/qr/start"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.qrcode_key").value("qr-key"))
-            .andExpect(jsonPath("$.url").value("https://example.com/qr"))
-            .andExpect(jsonPath("$.svg").value("<svg></svg>"));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.qrcode_key").value("qr-key"))
+            .andExpect(jsonPath("$.data.url").value("https://example.com/qr"))
+            .andExpect(jsonPath("$.data.svg").value("<svg></svg>"));
     }
 
     @Test
@@ -71,24 +73,26 @@ class AuthControllerTest extends AbstractMySqlIntegrationTest {
                 "DedeUserID", "9527"
             ))
         );
-        Mockito.when(bilibiliAuthClient.fetchSession(Mockito.anyMap())).thenReturn(
+        Mockito.when(bilibiliAuthClient.fetchSession(Mockito.any())).thenReturn(
             new BilibiliSessionPayload(true, "BinCode", 9527L)
         );
 
         mockMvc.perform(get("/api/auth/qr/poll").queryParam("qrcode_key", "qr-key"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("confirmed"))
-            .andExpect(jsonPath("$.logged_in").value(true))
-            .andExpect(jsonPath("$.user_name").value("BinCode"))
-            .andExpect(jsonPath("$.uid").value(9527));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.status").value("confirmed"))
+            .andExpect(jsonPath("$.data.logged_in").value(true))
+            .andExpect(jsonPath("$.data.user_name").value("BinCode"))
+            .andExpect(jsonPath("$.data.uid").value(9527));
 
         mockMvc.perform(get("/api/auth/session"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.logged_in").value(true))
-            .andExpect(jsonPath("$.user_name").value("BinCode"))
-            .andExpect(jsonPath("$.uid").value(9527));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.logged_in").value(true))
+            .andExpect(jsonPath("$.data.user_name").value("BinCode"))
+            .andExpect(jsonPath("$.data.uid").value(9527));
 
-        org.assertj.core.api.Assertions.assertThat(appStateMapper.selectById("auth_cookies")).isNotNull();
+        org.assertj.core.api.Assertions.assertThat(appStateMapper.selectById("bilibili_credentials")).isNotNull();
     }
 
     @Test
@@ -99,10 +103,11 @@ class AuthControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(get("/api/auth/qr/poll").queryParam("qrcode_key", "qr-key"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.status").value("pending"))
-            .andExpect(jsonPath("$.message").value("等待扫码"));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.status").value("pending"))
+            .andExpect(jsonPath("$.data.message").value("等待扫码"));
 
-        org.assertj.core.api.Assertions.assertThat(appStateMapper.selectById("auth_cookies")).isNull();
+        org.assertj.core.api.Assertions.assertThat(appStateMapper.selectById("bilibili_credentials")).isNull();
     }
 
     @TestConfiguration
@@ -114,3 +119,4 @@ class AuthControllerTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

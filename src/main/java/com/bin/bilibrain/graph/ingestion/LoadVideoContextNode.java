@@ -2,8 +2,8 @@ package com.bin.bilibrain.graph.ingestion;
 
 import com.alibaba.cloud.ai.graph.OverAllState;
 import com.alibaba.cloud.ai.graph.action.NodeAction;
-import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.system.ProcessingSettingsService;
+import com.bin.bilibrain.model.entity.Video;
+import com.bin.bilibrain.service.system.ProcessingSettingsService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -30,3 +30,4 @@ public class LoadVideoContextNode implements NodeAction {
         return updates;
     }
 }
+

@@ -1,16 +1,19 @@
 package com.bin.bilibrain.catalog;
 
-import com.bin.bilibrain.auth.AuthService;
-import com.bin.bilibrain.auth.AuthSessionResponse;
+import com.bin.bilibrain.model.vo.auth.AuthSessionVO;
+import com.bin.bilibrain.model.vo.catalog.FolderListResponse;
+import com.bin.bilibrain.model.vo.catalog.FolderVideosResponse;
+import com.bin.bilibrain.service.catalog.CatalogService;
+import com.bin.bilibrain.service.auth.AuthService;
 import com.bin.bilibrain.bilibili.BilibiliFolderMetadata;
 import com.bin.bilibrain.bilibili.BilibiliMetadataClient;
 import com.bin.bilibrain.bilibili.BilibiliVideoMetadata;
-import com.bin.bilibrain.entity.Folder;
-import com.bin.bilibrain.entity.Video;
+import com.bin.bilibrain.model.entity.Folder;
+import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.mapper.FolderMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
-import com.bin.bilibrain.state.AppStateEntity;
-import com.bin.bilibrain.state.AppStateMapper;
+import com.bin.bilibrain.model.entity.AppState;
+import com.bin.bilibrain.mapper.AppStateMapper;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -55,7 +58,7 @@ class CatalogServiceTest extends AbstractMySqlIntegrationTest {
     @BeforeEach
     void setUp() {
         reset(bilibiliMetadataClient, authService);
-        when(authService.getSession()).thenReturn(new AuthSessionResponse(false, null, null));
+        when(authService.getSession()).thenReturn(new AuthSessionVO(false, null, null));
     }
 
     @Test
@@ -76,7 +79,7 @@ class CatalogServiceTest extends AbstractMySqlIntegrationTest {
     @Test
     void listFoldersReturnsStaleCacheAndSchedulesBackgroundRefresh() {
         LocalDateTime staleTime = LocalDateTime.now().minusMinutes(10);
-        appStateMapper.insert(AppStateEntity.builder()
+        appStateMapper.insert(AppState.builder()
             .stateKey("cache:folders:9527")
             .stateValue("{\"uid\":9527}")
             .updatedAt(staleTime)
@@ -121,7 +124,7 @@ class CatalogServiceTest extends AbstractMySqlIntegrationTest {
     void listFolderVideosReturnsStaleCacheAndSchedulesBackgroundRefresh() {
         insertFolder(2002L, "BiliBrain");
         insertVideo("BV1stale11111", 2002L, "Old Title");
-        appStateMapper.insert(AppStateEntity.builder()
+        appStateMapper.insert(AppState.builder()
             .stateKey("cache:folder-videos:2002")
             .stateValue("{\"folder_id\":2002}")
             .updatedAt(LocalDateTime.now().minusMinutes(10))
@@ -186,3 +189,4 @@ class CatalogServiceTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

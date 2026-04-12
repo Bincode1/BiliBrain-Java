@@ -1,13 +1,14 @@
 package com.bin.bilibrain.ingestion;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.bin.bilibrain.entity.IngestionTask;
-import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.entity.VideoPipeline;
+import com.bin.bilibrain.model.entity.IngestionTask;
+import com.bin.bilibrain.model.entity.Video;
+import com.bin.bilibrain.model.entity.VideoPipeline;
 import com.bin.bilibrain.mapper.IngestionTaskMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
+import com.bin.bilibrain.service.ingestion.IngestionDispatcherService;
 import com.bin.bilibrain.service.media.AudioDownloadService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -185,3 +186,4 @@ class IngestionDispatcherServiceTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

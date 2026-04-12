@@ -1,14 +1,16 @@
 package com.bin.bilibrain.ingestion;
 
-import com.bin.bilibrain.entity.Transcript;
-import com.bin.bilibrain.entity.Video;
-import com.bin.bilibrain.entity.VideoPipeline;
-import com.bin.bilibrain.entity.VideoSummary;
+import com.bin.bilibrain.model.entity.Transcript;
+import com.bin.bilibrain.model.entity.Video;
+import com.bin.bilibrain.model.entity.VideoPipeline;
+import com.bin.bilibrain.model.entity.VideoSummary;
+import com.bin.bilibrain.model.vo.ingestion.ProcessStatusResponse;
 import com.bin.bilibrain.mapper.TranscriptMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.mapper.VideoPipelineMapper;
 import com.bin.bilibrain.mapper.VideoSummaryMapper;
 import com.bin.bilibrain.service.asr.AudioTranscriptionService;
+import com.bin.bilibrain.service.ingestion.PipelineStatusService;
 import com.bin.bilibrain.service.media.AudioDownloadService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -101,8 +103,9 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(post("/api/videos/BV1process111/process"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.started").value(true))
-            .andExpect(jsonPath("$.operation").value("process"));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.started").value(true))
+            .andExpect(jsonPath("$.data.operation").value("process"));
 
         waitUntil(() -> "partial".equals(pipelineStatusService.getStatus("BV1process111").overallStatus()));
 
@@ -142,7 +145,8 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(post("/api/videos/BV1reset11111/reset"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.reset").value(true));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.reset").value(true));
 
         waitUntil(() -> !pipelineStatusService.getStatus("BV1reset11111").running());
 
@@ -167,8 +171,9 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
 
         mockMvc.perform(post("/api/videos/reset-all"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.reset").value(true))
-            .andExpect(jsonPath("$.transcript_count").value(1));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.reset").value(true))
+            .andExpect(jsonPath("$.data.transcript_count").value(1));
 
         assertThat(transcriptMapper.selectCount(null)).isZero();
     }
@@ -228,3 +233,4 @@ class ProcessStatusControllerTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

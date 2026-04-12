@@ -1,7 +1,7 @@
 package com.bin.bilibrain.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
-import com.bin.bilibrain.entity.IngestionTask;
+import com.bin.bilibrain.model.entity.IngestionTask;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
 import org.apache.ibatis.annotations.Select;
@@ -35,3 +35,4 @@ public interface IngestionTaskMapper extends BaseMapper<IngestionTask> {
     @Delete("DELETE FROM ingestion_tasks")
     void deleteAllTasks();
 }
+

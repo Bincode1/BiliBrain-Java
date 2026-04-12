@@ -1,9 +1,11 @@
 package com.bin.bilibrain.ingestion;
 
-import com.bin.bilibrain.entity.IngestionTask;
-import com.bin.bilibrain.entity.Video;
+import com.bin.bilibrain.model.entity.IngestionTask;
+import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.mapper.IngestionTaskMapper;
 import com.bin.bilibrain.mapper.VideoMapper;
+import com.bin.bilibrain.service.ingestion.IngestionDispatcherService;
+import com.bin.bilibrain.service.ingestion.IngestionQueueService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,3 +87,4 @@ class IngestionQueueServiceTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

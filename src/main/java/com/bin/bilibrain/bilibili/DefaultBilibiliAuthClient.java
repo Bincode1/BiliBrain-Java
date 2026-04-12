@@ -26,11 +26,11 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
     private final WebClient.Builder webClientBuilder;
 
     @Override
-    public BilibiliSessionPayload fetchSession(Map<String, String> cookies) {
+    public BilibiliSessionPayload fetchSession(BilibiliCredential credential) {
         Map<String, Object> payload = getJson(
             "https://api.bilibili.com/x/web-interface/nav",
             Map.of(),
-            cookies
+            credential
         );
         Map<String, Object> data = asMap(payload.get("data"));
         return new BilibiliSessionPayload(
@@ -45,7 +45,7 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
         Map<String, Object> payload = getJson(
             "https://passport.bilibili.com/x/passport-login/web/qrcode/generate",
             Map.of(),
-            Map.of()
+            BilibiliCredential.empty()
         );
         Map<String, Object> data = asMap(payload.get("data"));
         String url = textOrNull(data.get("url"));
@@ -108,7 +108,7 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
             .orElseThrow(() -> new BilibiliClientException("Bilibili 登录轮询返回空响应。"));
     }
 
-    private Map<String, Object> getJson(String url, Map<String, Object> params, Map<String, String> cookies) {
+    private Map<String, Object> getJson(String url, Map<String, Object> params, BilibiliCredential credential) {
         URI uri = buildUri(url, params);
         try {
             Map<?, ?> payload = webClientBuilder.build()
@@ -116,7 +116,7 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
                 .uri(uri)
                 .headers(headers -> {
                     applyDefaultHeaders(headers);
-                    String cookieHeader = buildCookieHeader(cookies);
+                    String cookieHeader = credential.toHeaderValue();
                     if (StringUtils.hasText(cookieHeader)) {
                         headers.set("Cookie", cookieHeader);
                     }
@@ -156,14 +156,6 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
         UriComponentsBuilder builder = UriComponentsBuilder.fromUriString(url);
         params.forEach(builder::queryParam);
         return builder.build(true).toUri();
-    }
-
-    private String buildCookieHeader(Map<String, String> cookies) {
-        return cookies.entrySet().stream()
-            .filter(entry -> StringUtils.hasText(entry.getValue()))
-            .map(entry -> entry.getKey() + "=" + entry.getValue().trim())
-            .reduce((left, right) -> left + "; " + right)
-            .orElse("");
     }
 
     private Map<String, String> extractCookies(ClientResponse response) {

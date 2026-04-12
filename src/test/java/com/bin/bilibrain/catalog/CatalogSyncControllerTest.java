@@ -1,11 +1,11 @@
 package com.bin.bilibrain.catalog;
 
-import com.bin.bilibrain.auth.AuthService;
-import com.bin.bilibrain.auth.AuthSessionResponse;
+import com.bin.bilibrain.model.vo.auth.AuthSessionVO;
+import com.bin.bilibrain.service.auth.AuthService;
 import com.bin.bilibrain.bilibili.BilibiliFolderMetadata;
 import com.bin.bilibrain.bilibili.BilibiliMetadataClient;
 import com.bin.bilibrain.bilibili.BilibiliVideoMetadata;
-import com.bin.bilibrain.entity.Folder;
+import com.bin.bilibrain.model.entity.Folder;
 import com.bin.bilibrain.mapper.FolderMapper;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.BeforeEach;
@@ -51,7 +51,7 @@ class CatalogSyncControllerTest extends AbstractMySqlIntegrationTest {
     @BeforeEach
     void setUp() {
         reset(bilibiliMetadataClient, authService);
-        when(authService.getSession()).thenReturn(new AuthSessionResponse(false, null, null));
+        when(authService.getSession()).thenReturn(new AuthSessionVO(false, null, null));
     }
 
     @Test
@@ -67,20 +67,21 @@ class CatalogSyncControllerTest extends AbstractMySqlIntegrationTest {
                     {"uid":9527}
                     """))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.uid").value(9527))
-            .andExpect(jsonPath("$.new_folders").value(2))
-            .andExpect(jsonPath("$.updated_folders").value(0))
-            .andExpect(jsonPath("$.stats.folder_count").value(2));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.uid").value(9527))
+            .andExpect(jsonPath("$.data.new_folders").value(2))
+            .andExpect(jsonPath("$.data.updated_folders").value(0))
+            .andExpect(jsonPath("$.data.stats.folder_count").value(2));
 
         mockMvc.perform(get("/api/folders").queryParam("uid", "9527"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.folders[0].folder_id").value(1001))
-            .andExpect(jsonPath("$.folders[1].folder_id").value(1002));
+            .andExpect(jsonPath("$.data.folders[0].folder_id").value(1001))
+            .andExpect(jsonPath("$.data.folders[1].folder_id").value(1002));
     }
 
     @Test
     void syncFoldersFallsBackToLoggedInUid() throws Exception {
-        when(authService.getSession()).thenReturn(new AuthSessionResponse(true, "BinCode", 9527L));
+        when(authService.getSession()).thenReturn(new AuthSessionVO(true, "BinCode", 9527L));
         when(bilibiliMetadataClient.listFolders(eq(9527L))).thenReturn(List.of(
             new BilibiliFolderMetadata(1001L, "Java AI", 12)
         ));
@@ -89,8 +90,9 @@ class CatalogSyncControllerTest extends AbstractMySqlIntegrationTest {
                 .contentType("application/json")
                 .content("{}"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.uid").value(9527))
-            .andExpect(jsonPath("$.new_folders").value(1));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.uid").value(9527))
+            .andExpect(jsonPath("$.data.new_folders").value(1));
     }
 
     @Test
@@ -131,15 +133,16 @@ class CatalogSyncControllerTest extends AbstractMySqlIntegrationTest {
                     {"folder_id":2002}
                     """))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.folder").value("BiliBrain"))
-            .andExpect(jsonPath("$.failed_videos").value(0))
-            .andExpect(jsonPath("$.stats.video_count").value(2));
+            .andExpect(jsonPath("$.code").value(0))
+            .andExpect(jsonPath("$.data.folder").value("BiliBrain"))
+            .andExpect(jsonPath("$.data.failed_videos").value(0))
+            .andExpect(jsonPath("$.data.stats.video_count").value(2));
 
         mockMvc.perform(get("/api/folders/2002/videos"))
             .andExpect(status().isOk())
-            .andExpect(jsonPath("$.videos[*].bvid", containsInAnyOrder("BV1abc411111", "invalid:2002:page1-idx1")))
-            .andExpect(jsonPath("$.videos[*].sync_status", hasItem("pending")))
-            .andExpect(jsonPath("$.videos[*].is_invalid", hasItem(true)));
+            .andExpect(jsonPath("$.data.videos[*].bvid", containsInAnyOrder("BV1abc411111", "invalid:2002:page1-idx1")))
+            .andExpect(jsonPath("$.data.videos[*].sync_status", hasItem("pending")))
+            .andExpect(jsonPath("$.data.videos[*].is_invalid", hasItem(true)));
     }
 
     @Test
@@ -165,3 +168,4 @@ class CatalogSyncControllerTest extends AbstractMySqlIntegrationTest {
         }
     }
 }
+

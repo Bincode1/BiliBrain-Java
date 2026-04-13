@@ -47,7 +47,7 @@ public class SummaryGenerationService {
     public SummaryGenerationService(
         DashScopeChatClientFactory chatClientFactory,
         AppProperties appProperties,
-        @Qualifier("applicationTaskExecutor") ObjectProvider<Executor> executorProvider
+        @Qualifier("summaryTaskExecutor") ObjectProvider<Executor> executorProvider
     ) {
         this.chatClientFactory = chatClientFactory;
         this.appProperties = appProperties;

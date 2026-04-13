@@ -67,6 +67,12 @@ public class AppProperties {
         private String dedeUserId = "";
         @Min(1)
         private int sessionCacheTtlSeconds = 30;
+        @Min(1)
+        private int httpTimeoutSeconds = 15;
+        @Min(0)
+        private int httpRetries = 2;
+        @Min(0)
+        private long httpRetryBackoffMillis = 300;
     }
 
     @Data
@@ -113,6 +119,10 @@ public class AppProperties {
 
         @Min(5)
         private int asrApiTimeoutSeconds = 90;
+        @Min(0)
+        private int asrApiRetries = 2;
+        @Min(0)
+        private long asrApiRetryBackoffMillis = 1000;
 
         @NotBlank
         private String ffmpegCommand = "ffmpeg";

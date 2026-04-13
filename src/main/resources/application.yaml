@@ -85,6 +85,9 @@ app:
     bili-jct: ${BILIBILI_BILI_JCT:}
     dede-user-id: ${BILIBILI_DEDE_USER_ID:}
     session-cache-ttl-seconds: ${BILIBILI_SESSION_CACHE_TTL_SECONDS:30}
+    http-timeout-seconds: ${BILIBILI_HTTP_TIMEOUT_SECONDS:15}
+    http-retries: ${BILIBILI_HTTP_RETRIES:2}
+    http-retry-backoff-millis: ${BILIBILI_HTTP_RETRY_BACKOFF_MILLIS:300}
   processing:
     max-video-minutes: ${DEFAULT_MAX_VIDEO_MINUTES:30}
     ingestion-max-concurrency: ${INGESTION_MAX_CONCURRENCY:3}
@@ -101,6 +104,8 @@ app:
     asr-api-model: ${ASR_API_MODEL:qwen3-asr-flash}
     asr-enable-itn: ${ASR_ENABLE_ITN:false}
     asr-api-timeout-seconds: ${ASR_API_TIMEOUT_SECONDS:90}
+    asr-api-retries: ${ASR_API_RETRIES:2}
+    asr-api-retry-backoff-millis: ${ASR_API_RETRY_BACKOFF_MILLIS:1000}
     ffmpeg-command: ${FFMPEG_COMMAND:ffmpeg}
     ffprobe-command: ${FFPROBE_COMMAND:ffprobe}
   retrieval:

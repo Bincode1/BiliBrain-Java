@@ -1,7 +1,10 @@
 package com.bin.bilibrain.config;
 
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.core.task.AsyncTaskExecutor;
+import org.springframework.web.servlet.config.annotation.AsyncSupportConfigurer;
 import org.springframework.web.servlet.config.annotation.CorsRegistry;
 import org.springframework.web.servlet.config.annotation.InterceptorRegistry;
 import org.springframework.web.servlet.config.annotation.ResourceHandlerRegistry;
@@ -14,6 +17,8 @@ import java.util.List;
 public class WebConfig implements WebMvcConfigurer {
     private final AppProperties appProperties;
     private final ApiRequestLoggingInterceptor apiRequestLoggingInterceptor;
+    @Qualifier("agentTaskExecutor")
+    private final AsyncTaskExecutor agentTaskExecutor;
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
@@ -29,6 +34,12 @@ public class WebConfig implements WebMvcConfigurer {
     public void addInterceptors(InterceptorRegistry registry) {
         registry.addInterceptor(apiRequestLoggingInterceptor)
             .addPathPatterns("/api/**");
+    }
+
+    @Override
+    public void configureAsyncSupport(AsyncSupportConfigurer configurer) {
+        configurer.setTaskExecutor(agentTaskExecutor);
+        configurer.setDefaultTimeout(0L);
     }
 
     @Override

@@ -1,13 +1,18 @@
 package com.bin.bilibrain.bilibili;
 
+import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.manager.bilibili.BilibiliCredentialManager;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.io.buffer.DataBufferUtils;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.util.HtmlUtils;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.Exceptions;
+import reactor.util.retry.Retry;
 
 import java.net.URI;
 import java.net.URLEncoder;
@@ -17,6 +22,7 @@ import java.nio.file.StandardOpenOption;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
@@ -26,10 +32,11 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.concurrent.TimeoutException;
 import java.util.regex.Pattern;
 
+@Slf4j
 @Component
-@RequiredArgsConstructor
 public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     private static final String USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
@@ -43,8 +50,23 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     };
     private static final Pattern HTML_TAG_PATTERN = Pattern.compile("<[^>]+>");
 
-    private final WebClient.Builder webClientBuilder;
+    private final WebClient bilibiliWebClient;
     private final BilibiliCredentialManager bilibiliCredentialManager;
+    private final Duration requestTimeout;
+    private final int requestRetries;
+    private final Duration retryBackoff;
+
+    public DefaultBilibiliMetadataClient(
+        @Qualifier("bilibiliWebClient") WebClient bilibiliWebClient,
+        BilibiliCredentialManager bilibiliCredentialManager,
+        AppProperties appProperties
+    ) {
+        this.bilibiliWebClient = bilibiliWebClient;
+        this.bilibiliCredentialManager = bilibiliCredentialManager;
+        this.requestTimeout = Duration.ofSeconds(appProperties.getBilibili().getHttpTimeoutSeconds());
+        this.requestRetries = appProperties.getBilibili().getHttpRetries();
+        this.retryBackoff = Duration.ofMillis(appProperties.getBilibili().getHttpRetryBackoffMillis());
+    }
 
     @Override
     public List<BilibiliFolderMetadata> listFolders(long uid) {
@@ -177,11 +199,12 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
             throw new BilibiliClientException("bvid 不能为空。");
         }
         Path normalizedOutput = outputPath.toAbsolutePath().normalize();
+        long startedAt = System.nanoTime();
         try {
             Files.createDirectories(normalizedOutput.getParent());
             BilibiliAudioTrack track = resolveAudioTrack(bvid.trim());
             DataBufferUtils.write(
-                webClientBuilder.build()
+                bilibiliWebClient
                     .get()
                     .uri(track.audioUrl())
                     .headers(headers -> {
@@ -195,7 +218,26 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
                         }
                     })
                     .retrieve()
-                    .bodyToFlux(org.springframework.core.io.buffer.DataBuffer.class),
+                    .bodyToFlux(org.springframework.core.io.buffer.DataBuffer.class)
+                    .timeout(requestTimeout)
+                    .doOnSubscribe(ignored -> log.info(
+                        "client=bilibili operation=download-audio status=started bvid={} audioUrl={}",
+                        bvid.trim(),
+                        track.audioUrl()
+                    ))
+                    .doOnComplete(() -> log.info(
+                        "client=bilibili operation=download-audio status=success bvid={} elapsedMs={}",
+                        bvid.trim(),
+                        elapsedMs(startedAt)
+                    ))
+                    .doOnError(exception -> log.warn(
+                        "client=bilibili operation=download-audio status=failed bvid={} elapsedMs={} exceptionClass={} message={}",
+                        bvid.trim(),
+                        elapsedMs(startedAt),
+                        rootCause(exception).getClass().getSimpleName(),
+                        messageOf(exception),
+                        exception
+                    )),
                 normalizedOutput,
                 StandardOpenOption.CREATE,
                 StandardOpenOption.TRUNCATE_EXISTING,
@@ -328,7 +370,7 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
     private Map<String, Object> getJson(String url, Map<String, Object> params) {
         URI uri = buildUri(url, params);
         try {
-            Map<?, ?> payload = webClientBuilder.build()
+            Map<?, ?> payload = bilibiliWebClient
                 .get()
                 .uri(uri)
                 .headers(headers -> {
@@ -342,7 +384,33 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
                     }
                 })
                 .retrieve()
+                .onStatus(
+                    status -> status.value() == 429 || status.is5xxServerError(),
+                    clientResponse -> clientResponse.bodyToMono(String.class)
+                        .defaultIfEmpty("")
+                        .map(body -> new RetryableBilibiliHttpException(uri, clientResponse.statusCode().value(), body))
+                )
+                .onStatus(
+                    org.springframework.http.HttpStatusCode::isError,
+                    clientResponse -> clientResponse.bodyToMono(String.class)
+                        .defaultIfEmpty("")
+                        .map(body -> new BilibiliClientException(
+                            "请求 Bilibili 失败: uri=%s, status=%s, body=%s"
+                                .formatted(uri, clientResponse.statusCode().value(), body)
+                        ))
+                )
                 .bodyToMono(Map.class)
+                .timeout(requestTimeout)
+                .doOnSubscribe(ignored -> log.info("client=bilibili operation=json-get status=started uri={}", uri))
+                .retryWhen(buildRetrySpec("json-get", uri))
+                .doOnSuccess(ignored -> log.info("client=bilibili operation=json-get status=success uri={}", uri))
+                .doOnError(exception -> log.warn(
+                    "client=bilibili operation=json-get status=failed uri={} exceptionClass={} message={}",
+                    uri,
+                    rootCause(exception).getClass().getSimpleName(),
+                    messageOf(exception),
+                    exception
+                ))
                 .block();
 
             if (payload == null) {
@@ -364,6 +432,40 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
         } catch (Exception exception) {
             throw new BilibiliClientException("请求 Bilibili 失败。", exception);
         }
+    }
+
+    private Retry buildRetrySpec(String operation, URI uri) {
+        return Retry.backoff(requestRetries, retryBackoff)
+            .filter(this::isRetryable)
+            .doBeforeRetry(signal -> log.warn(
+                "client=bilibili operation={} status=retry uri={} attempt={} retryCount={} exceptionClass={} message={}",
+                operation,
+                uri,
+                signal.totalRetries() + 2,
+                signal.totalRetries() + 1,
+                rootCause(signal.failure()).getClass().getSimpleName(),
+                messageOf(signal.failure())
+            ));
+    }
+
+    private boolean isRetryable(Throwable throwable) {
+        Throwable rootCause = rootCause(throwable);
+        return rootCause instanceof RetryableBilibiliHttpException
+            || rootCause instanceof WebClientRequestException
+            || rootCause instanceof TimeoutException;
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        return Exceptions.unwrap(throwable);
+    }
+
+    private String messageOf(Throwable throwable) {
+        Throwable rootCause = rootCause(throwable);
+        return rootCause.getMessage() == null ? "" : rootCause.getMessage();
+    }
+
+    private long elapsedMs(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000_000L;
     }
 
     private URI buildUri(String url, Map<String, Object> params) {
@@ -487,5 +589,11 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
             return false;
         }
         return Objects.equals("1", String.valueOf(value)) || Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private static final class RetryableBilibiliHttpException extends BilibiliClientException {
+        private RetryableBilibiliHttpException(URI uri, int status, String body) {
+            super("请求 Bilibili 失败: uri=%s, status=%s, body=%s".formatted(uri, status, body));
+        }
     }
 }

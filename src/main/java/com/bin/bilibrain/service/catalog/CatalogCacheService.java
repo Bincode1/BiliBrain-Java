@@ -18,6 +18,7 @@ import java.util.Optional;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 @Slf4j
 @Service
@@ -36,7 +37,7 @@ public class CatalogCacheService {
         AppStateService appStateService,
         ObjectProvider<CatalogSyncService> catalogSyncServiceProvider,
         AppProperties appProperties,
-        @Qualifier("applicationTaskExecutor") Executor executor
+        @Qualifier("catalogTaskExecutor") Executor executor
     ) {
         this.appStateService = appStateService;
         this.catalogSyncServiceProvider = catalogSyncServiceProvider;
@@ -104,13 +105,18 @@ public class CatalogCacheService {
             if (existing != null && !existing.isDone()) {
                 return existing;
             }
-            CompletableFuture<Void> future = CompletableFuture.runAsync(operation, executor)
-                .exceptionally(exception -> {
-                    log.warn("catalog background refresh failed for {}", taskKey, exception);
-                    return null;
-                })
-                .whenComplete((ignored, throwable) -> refreshTasks.remove(taskKey));
-            return future;
+            try {
+                CompletableFuture<Void> future = CompletableFuture.runAsync(operation, executor)
+                    .exceptionally(exception -> {
+                        log.warn("catalog background refresh failed for {}", taskKey, exception);
+                        return null;
+                    })
+                    .whenComplete((ignored, throwable) -> refreshTasks.remove(taskKey));
+                return future;
+            } catch (RejectedExecutionException exception) {
+                log.warn("catalog background refresh skipped because executor is busy: {}", taskKey, exception);
+                return CompletableFuture.completedFuture(null);
+            }
         });
     }
 }

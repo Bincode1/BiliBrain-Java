@@ -1,177 +1,201 @@
 package com.bin.bilibrain.service.agent;
 
+import com.alibaba.cloud.ai.graph.NodeOutput;
+import com.alibaba.cloud.ai.graph.exception.GraphRunnerException;
+import com.alibaba.cloud.ai.graph.streaming.OutputType;
+import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
 import com.bin.bilibrain.model.dto.agent.AgentResumeStreamRequest;
 import com.bin.bilibrain.model.dto.agent.AgentStreamRequest;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
 import com.bin.bilibrain.service.chat.ConversationService;
-import com.alibaba.cloud.ai.graph.NodeOutput;
-import com.alibaba.cloud.ai.graph.streaming.OutputType;
-import com.alibaba.cloud.ai.graph.streaming.StreamingOutput;
+import com.bin.bilibrain.stream.event.SseEventBuilder;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
+import reactor.core.scheduler.Scheduler;
+import reactor.core.scheduler.Schedulers;
 
-import java.io.IOException;
+import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 
+@Slf4j
 @Service
 public class SkillAgentSseService {
     private final ConversationService conversationService;
     private final UnifiedAgentService unifiedAgentService;
     private final AgentResumeService agentResumeService;
-    private final Executor executor;
+    private final SseEventBuilder sseEventBuilder;
+    private final Scheduler streamScheduler;
 
     public SkillAgentSseService(
         ConversationService conversationService,
         UnifiedAgentService unifiedAgentService,
         AgentResumeService agentResumeService,
+        SseEventBuilder sseEventBuilder,
         @Qualifier("agentTaskExecutor") ObjectProvider<Executor> executorProvider
     ) {
         this.conversationService = conversationService;
         this.unifiedAgentService = unifiedAgentService;
         this.agentResumeService = agentResumeService;
-        this.executor = executorProvider.getIfAvailable(() -> Runnable::run);
+        this.sseEventBuilder = sseEventBuilder;
+        Executor executor = executorProvider.getIfAvailable();
+        this.streamScheduler = executor == null ? Schedulers.immediate() : Schedulers.fromExecutor(executor);
     }
 
-    public SseEmitter stream(AgentStreamRequest request) {
-        SseEmitter emitter = new SseEmitter(0L);
-        executor.execute(() -> doStream(request, emitter));
-        return emitter;
+    public Flux<ServerSentEvent<Object>> stream(AgentStreamRequest request) {
+        return Flux.defer(() -> buildStream(request))
+            .subscribeOn(streamScheduler)
+            .doOnSubscribe(ignored -> log.info(
+                "agent stream started: conversationId={}, folderId={}, videoBvid={}",
+                request.conversationId(),
+                request.folderId(),
+                request.videoBvid()
+            ))
+            .doOnCancel(() -> log.info("agent stream cancelled: conversationId={}", request.conversationId()))
+            .doOnComplete(() -> log.info("agent stream completed: conversationId={}", request.conversationId()))
+            .onErrorResume(exception -> {
+                log.warn("agent stream failed: conversationId={}, reason={}", request.conversationId(), messageOf(exception), exception);
+                return Flux.just(sseEventBuilder.error(messageOf(exception)));
+            });
     }
 
-    public SseEmitter resume(AgentResumeStreamRequest request) {
-        SseEmitter emitter = new SseEmitter(0L);
-        executor.execute(() -> {
-            try {
-                ChatConversationVO currentConversation = conversationService.getConversation(request.conversationId());
-                ChatConversationVO conversation = conversationService.ensureConversation(
-                    request.conversationId(),
-                    currentConversation.title(),
-                    currentConversation.conversationType(),
-                    request.folderId(),
-                    request.videoBvid(),
-                    request.scopeMode()
-                );
-                send(emitter, "conversation", Map.of("created", false, "conversation", conversation, "conversation_id", conversation.id()));
-                String resumingMessage = "正在恢复统一 Agent 执行";
-                send(emitter, "status", Map.of("stage", "resuming", "message", resumingMessage, "delta", resumingMessage));
+    public Flux<ServerSentEvent<Object>> resume(AgentResumeStreamRequest request) {
+        return Flux.defer(() -> buildResumeStream(request))
+            .subscribeOn(streamScheduler)
+            .doOnSubscribe(ignored -> log.info("agent resume stream started: conversationId={}", request.conversationId()))
+            .doOnCancel(() -> log.info("agent resume stream cancelled: conversationId={}", request.conversationId()))
+            .doOnComplete(() -> log.info("agent resume stream completed: conversationId={}", request.conversationId()))
+            .onErrorResume(exception -> {
+                log.warn("agent resume stream failed: conversationId={}, reason={}", request.conversationId(), messageOf(exception), exception);
+                return Flux.just(sseEventBuilder.error(messageOf(exception)));
+            });
+    }
 
+    private Flux<ServerSentEvent<Object>> buildStream(AgentStreamRequest request) {
+        boolean created = !StringUtils.hasText(request.conversationId());
+        ChatConversationVO conversation = conversationService.ensureConversation(
+            request.conversationId(),
+            buildTitleHint(request.message()),
+            StringUtils.hasText(request.conversationType()) ? request.conversationType() : "AGENT",
+            request.folderId(),
+            request.videoBvid(),
+            request.scopeMode()
+        );
+        conversationService.appendMessage(conversation.id(), "USER", request.message(), "[]");
+
+        String startedMessage = "统一 Agent 正在分析技能、工具与知识范围";
+        Flux<ServerSentEvent<Object>> initialEvents = Flux.just(
+            sseEventBuilder.conversation(created, conversation),
+            sseEventBuilder.status("started", startedMessage)
+        );
+
+        UnifiedAgentService.AgentStreamRuntime runtime = unifiedAgentService.createStreamRuntime(
+            conversation.id(),
+            conversation.folderId(),
+            conversation.videoBvid()
+        );
+        if (runtime == null) {
+            return Flux.concat(
+                initialEvents,
+                Flux.defer(() -> {
+                    AgentExecutionResult result = unifiedAgentService.execute(
+                        conversation.id(),
+                        conversation.folderId(),
+                        conversation.videoBvid(),
+                        request.message()
+                    );
+                    return emitResult(conversation, result, new LiveStreamState(), true);
+                })
+            );
+        }
+
+        LiveStreamState state = new LiveStreamState();
+        Flux<ServerSentEvent<Object>> liveEvents;
+        try {
+            liveEvents = runtime.agent().stream(request.message(), runtime.config())
+                .doOnNext(state.lastOutputRef::set)
+                .concatMap(output -> emitLiveNodeOutput(runtime, output, state));
+        } catch (GraphRunnerException exception) {
+            throw new IllegalStateException("统一 Agent 流式执行失败：" + exception.getMessage(), exception);
+        }
+
+        return Flux.concat(
+            initialEvents,
+            Flux.just(sseEventBuilder.skills(runtime.activeSkills())),
+            liveEvents,
+            Flux.defer(() -> finalizeRuntime(conversation, runtime, state))
+        );
+    }
+
+    private Flux<ServerSentEvent<Object>> buildResumeStream(AgentResumeStreamRequest request) {
+        ChatConversationVO currentConversation = conversationService.getConversation(request.conversationId());
+        ChatConversationVO conversation = conversationService.ensureConversation(
+            request.conversationId(),
+            currentConversation.title(),
+            currentConversation.conversationType(),
+            request.folderId(),
+            request.videoBvid(),
+            request.scopeMode()
+        );
+        String resumingMessage = "正在恢复统一 Agent 执行";
+        return Flux.concat(
+            Flux.just(
+                sseEventBuilder.conversation(false, conversation),
+                sseEventBuilder.status("resuming", resumingMessage)
+            ),
+            Flux.defer(() -> {
                 AgentExecutionResult result = agentResumeService.resume(
                     conversation.id(),
                     conversation.folderId(),
                     conversation.videoBvid(),
                     request
                 );
-                emitResult(emitter, conversation, result);
-            } catch (Exception exception) {
-                completeWithError(emitter, exception);
-            }
-        });
-        return emitter;
+                return emitResult(conversation, result, new LiveStreamState(), true);
+            })
+        );
     }
 
-    private void doStream(AgentStreamRequest request, SseEmitter emitter) {
-        try {
-            boolean created = !StringUtils.hasText(request.conversationId());
-            ChatConversationVO conversation = conversationService.ensureConversation(
-                request.conversationId(),
-                buildTitleHint(request.message()),
-                StringUtils.hasText(request.conversationType()) ? request.conversationType() : "AGENT",
-                request.folderId(),
-                request.videoBvid(),
-                request.scopeMode()
-            );
-
-            send(emitter, "conversation", Map.of("created", created, "conversation", conversation, "conversation_id", conversation.id()));
-            conversationService.appendMessage(conversation.id(), "USER", request.message(), "[]");
-            String startedMessage = "统一 Agent 正在分析技能、工具与知识范围";
-            send(emitter, "status", Map.of("stage", "started", "message", startedMessage, "delta", startedMessage));
-
-            UnifiedAgentService.AgentStreamRuntime runtime = unifiedAgentService.createStreamRuntime(
-                conversation.id(),
-                conversation.folderId(),
-                conversation.videoBvid()
-            );
-            if (runtime == null) {
-                AgentExecutionResult result = unifiedAgentService.execute(
-                    conversation.id(),
-                    conversation.folderId(),
-                    conversation.videoBvid(),
-                    request.message()
-                );
-                emitResult(emitter, conversation, result);
-                return;
-            }
-
-            send(emitter, "skills", Map.of("items", runtime.activeSkills(), "active_skills", runtime.activeSkills()));
-            AtomicReference<NodeOutput> lastOutputRef = new AtomicReference<>();
-            AtomicInteger sentSkillEvents = new AtomicInteger(0);
-            AtomicInteger sentToolEvents = new AtomicInteger(0);
-            AtomicReference<StringBuilder> streamedAnswerRef = new AtomicReference<>(new StringBuilder());
-
-            runtime.agent().stream(request.message(), runtime.config())
-                .doOnNext(output -> {
-                    lastOutputRef.set(output);
-                    emitLiveNodeOutput(emitter, runtime, output, sentSkillEvents, sentToolEvents, streamedAnswerRef.get());
-                })
-                .blockLast();
-
-            NodeOutput lastOutput = lastOutputRef.get();
-            if (lastOutput == null) {
-                throw new IllegalStateException("统一 Agent 流式执行没有返回任何输出。");
-            }
-
-            AgentExecutionResult result = unifiedAgentService.adaptStreamResult(
-                conversation.id(),
-                lastOutput,
-                runtime.bridge()
-            );
-            emitResult(
-                emitter,
-                conversation,
-                result,
-                streamedAnswerRef.get().length() > 0,
-                sentSkillEvents.get(),
-                sentToolEvents.get()
-            );
-        } catch (Exception exception) {
-            completeWithError(emitter, exception);
+    private Flux<ServerSentEvent<Object>> finalizeRuntime(
+        ChatConversationVO conversation,
+        UnifiedAgentService.AgentStreamRuntime runtime,
+        LiveStreamState state
+    ) {
+        NodeOutput lastOutput = state.lastOutputRef.get();
+        if (lastOutput == null) {
+            throw new IllegalStateException("统一 Agent 流式执行没有返回任何输出。");
         }
+        AgentExecutionResult result = unifiedAgentService.adaptStreamResult(
+            conversation.id(),
+            lastOutput,
+            runtime.bridge()
+        );
+        return emitResult(conversation, result, state, false);
     }
 
-    private void emitResult(SseEmitter emitter, ChatConversationVO conversation, AgentExecutionResult result) throws IOException {
-        emitResult(emitter, conversation, result, false, 0, 0);
-    }
-
-    private void emitResult(
-        SseEmitter emitter,
+    private Flux<ServerSentEvent<Object>> emitResult(
         ChatConversationVO conversation,
         AgentExecutionResult result,
-        boolean answerAlreadyStreamed,
-        int sentSkillEventCount,
-        int sentToolEventCount
-    ) throws IOException {
-        send(emitter, "skills", Map.of("items", result.activeSkills(), "active_skills", result.activeSkills()));
-        List<?> skillEvents = result.skillEvents();
-        for (int index = Math.max(sentSkillEventCount, 0); index < skillEvents.size(); index++) {
-            send(emitter, "skill", skillEvents.get(index));
+        LiveStreamState state,
+        boolean emitSkills
+    ) {
+        List<ServerSentEvent<Object>> events = new ArrayList<>();
+        if (emitSkills) {
+            events.add(sseEventBuilder.skills(result.activeSkills()));
         }
-        List<?> toolEvents = result.toolEvents();
-        for (int index = Math.max(sentToolEventCount, 0); index < toolEvents.size(); index++) {
-            send(emitter, "tool", toolEvents.get(index));
-        }
-        send(emitter, "reasoning", Map.of("content", result.reasoning(), "delta", result.reasoning()));
-        send(emitter, "route", Map.of("route", result.route(), "route_mode", result.route()));
-        send(emitter, "mode", Map.of("mode", result.mode(), "answer_mode", result.mode()));
-        send(emitter, "sources", Map.of("sources", result.sources()));
+        appendPendingEvents(events, "skill", result.skillEvents(), state.sentSkillEvents);
+        appendPendingEvents(events, "tool", result.toolEvents(), state.sentToolEvents);
+        events.add(sseEventBuilder.reasoning(result.reasoning()));
+        events.add(sseEventBuilder.route(result.route()));
+        events.add(sseEventBuilder.mode(result.mode()));
+        events.add(sseEventBuilder.sources(result.sources()));
 
         if (result.waitingApproval()) {
             String waitingMessage = "工具调用等待人工确认";
@@ -190,26 +214,16 @@ public class SkillAgentSseService {
                     result.approval()
                 )
             );
-            send(emitter, "answer_normalized", Map.of(
-                "content", waitingMessage,
-                "text", waitingMessage,
-                "route", result.route(),
-                "route_mode", result.route(),
-                "mode", result.mode(),
-                "answer_mode", result.mode(),
-                "sources", result.sources(),
-                "message", assistantMessage,
-                "conversation_id", conversation.id()
-            ));
-            send(emitter, "status", Map.of("stage", "waiting_approval", "message", waitingMessage, "delta", waitingMessage));
-            send(emitter, "approval", result.approval());
-            emitter.complete();
-            return;
+            log.info("agent stream waiting approval: conversationId={}", conversation.id());
+            events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, waitingMessage));
+            events.add(sseEventBuilder.status("waiting_approval", waitingMessage));
+            events.add(sseEventBuilder.approval(result.approval()));
+            return Flux.fromIterable(events);
         }
 
-        if (!answerAlreadyStreamed) {
+        if (!state.hasStreamedAnswer()) {
             for (String chunk : splitChunks(result.answer())) {
-                send(emitter, "answer", Map.of("delta", chunk));
+                events.add(sseEventBuilder.answer(chunk));
             }
         }
 
@@ -228,79 +242,43 @@ public class SkillAgentSseService {
                 null
             )
         );
-        send(emitter, "answer_normalized", Map.of(
-            "content", result.answer(),
-            "text", result.answer(),
-            "route", result.route(),
-            "route_mode", result.route(),
-            "mode", result.mode(),
-            "answer_mode", result.mode(),
-            "sources", result.sources(),
-            "message", assistantMessage,
-            "conversation_id", conversation.id()
-        ));
-        send(emitter, "done", Map.of("conversation_id", conversation.id()));
-        emitter.complete();
+        events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, result.answer()));
+        events.add(sseEventBuilder.done(conversation.id()));
+        return Flux.fromIterable(events);
     }
 
-    private void emitLiveNodeOutput(
-        SseEmitter emitter,
+    private Flux<ServerSentEvent<Object>> emitLiveNodeOutput(
         UnifiedAgentService.AgentStreamRuntime runtime,
         NodeOutput output,
-        AtomicInteger sentSkillEvents,
-        AtomicInteger sentToolEvents,
-        StringBuilder streamedAnswer
+        LiveStreamState state
     ) {
-        try {
-            emitPendingSkillAndToolEvents(emitter, runtime, sentSkillEvents, sentToolEvents);
-
-            if (!(output instanceof StreamingOutput<?> streamingOutput)) {
-                return;
-            }
-            if (streamingOutput.getOutputType() != OutputType.AGENT_MODEL_STREAMING) {
-                return;
-            }
-            String delta = streamingOutput.chunk();
-            if (delta == null || delta.isBlank()) {
-                return;
-            }
-            streamedAnswer.append(delta);
-            send(emitter, "answer", Map.of("delta", delta));
-        } catch (IOException exception) {
-            throw new IllegalStateException("发送流式输出失败。", exception);
+        List<ServerSentEvent<Object>> events = new ArrayList<>();
+        appendPendingEvents(events, "skill", runtime.bridge().skillEvents(), state.sentSkillEvents);
+        appendPendingEvents(events, "tool", runtime.bridge().toolEvents(), state.sentToolEvents);
+        if (!(output instanceof StreamingOutput<?> streamingOutput)) {
+            return Flux.fromIterable(events);
         }
+        if (streamingOutput.getOutputType() != OutputType.AGENT_MODEL_STREAMING) {
+            return Flux.fromIterable(events);
+        }
+        String delta = streamingOutput.chunk();
+        if (delta == null || delta.isBlank()) {
+            return Flux.fromIterable(events);
+        }
+        state.streamedAnswer.append(delta);
+        events.add(sseEventBuilder.answer(delta));
+        return Flux.fromIterable(events);
     }
 
-    private void emitPendingSkillAndToolEvents(
-        SseEmitter emitter,
-        UnifiedAgentService.AgentStreamRuntime runtime,
-        AtomicInteger sentSkillEvents,
-        AtomicInteger sentToolEvents
-    ) throws IOException {
-        List<?> skillEvents = runtime.bridge().skillEvents();
-        while (sentSkillEvents.get() < skillEvents.size()) {
-            send(emitter, "skill", skillEvents.get(sentSkillEvents.getAndIncrement()));
+    private void appendPendingEvents(
+        List<ServerSentEvent<Object>> sink,
+        String eventName,
+        List<?> items,
+        AtomicInteger sentCount
+    ) {
+        while (sentCount.get() < items.size()) {
+            sink.add(sseEventBuilder.event(eventName, items.get(sentCount.getAndIncrement())));
         }
-
-        List<?> toolEvents = runtime.bridge().toolEvents();
-        while (sentToolEvents.get() < toolEvents.size()) {
-            send(emitter, "tool", toolEvents.get(sentToolEvents.getAndIncrement()));
-        }
-    }
-
-    private void completeWithError(SseEmitter emitter, Exception exception) {
-        try {
-            String message = exception == null || exception.getMessage() == null
-                ? "统一 Agent 流式执行失败。"
-                : exception.getMessage();
-            send(emitter, "error", Map.of("message", message));
-        } catch (IOException ignored) {
-        }
-        emitter.complete();
-    }
-
-    private void send(SseEmitter emitter, String eventName, Object data) throws IOException {
-        emitter.send(SseEmitter.event().name(eventName).data(data, MediaType.APPLICATION_JSON));
     }
 
     private List<String> splitChunks(String answer) {
@@ -333,4 +311,20 @@ public class SkillAgentSseService {
         );
     }
 
+    private String messageOf(Throwable exception) {
+        return exception == null || exception.getMessage() == null
+            ? "统一 Agent 流式执行失败。"
+            : exception.getMessage();
+    }
+
+    private static final class LiveStreamState {
+        private final AtomicReference<NodeOutput> lastOutputRef = new AtomicReference<>();
+        private final AtomicInteger sentSkillEvents = new AtomicInteger(0);
+        private final AtomicInteger sentToolEvents = new AtomicInteger(0);
+        private final StringBuilder streamedAnswer = new StringBuilder();
+
+        private boolean hasStreamedAnswer() {
+            return streamedAnswer.length() > 0;
+        }
+    }
 }

@@ -2,8 +2,10 @@ package com.bin.bilibrain.service.asr;
 
 import com.bin.bilibrain.ai.client.QwenAsrClient;
 import com.bin.bilibrain.config.AppProperties;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.ObjectProvider;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
@@ -14,20 +16,49 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.concurrent.Executor;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class AudioTranscriptionService {
     private final QwenAsrClient qwenAsrClient;
     private final AudioChunkPlanner audioChunkPlanner;
     private final AppProperties appProperties;
+    private final Executor asrChunkExecutor;
+
+    @Autowired
+    public AudioTranscriptionService(
+        QwenAsrClient qwenAsrClient,
+        AudioChunkPlanner audioChunkPlanner,
+        AppProperties appProperties,
+        @Qualifier("asrChunkTaskExecutor") ObjectProvider<Executor> executorProvider
+    ) {
+        this(qwenAsrClient, audioChunkPlanner, appProperties, executorProvider.getIfAvailable(() -> Runnable::run));
+    }
+
+    public AudioTranscriptionService(
+        QwenAsrClient qwenAsrClient,
+        AudioChunkPlanner audioChunkPlanner,
+        AppProperties appProperties
+    ) {
+        this(qwenAsrClient, audioChunkPlanner, appProperties, Runnable::run);
+    }
+
+    AudioTranscriptionService(
+        QwenAsrClient qwenAsrClient,
+        AudioChunkPlanner audioChunkPlanner,
+        AppProperties appProperties,
+        Executor asrChunkExecutor
+    ) {
+        this.qwenAsrClient = qwenAsrClient;
+        this.audioChunkPlanner = audioChunkPlanner;
+        this.appProperties = appProperties;
+        this.asrChunkExecutor = asrChunkExecutor;
+    }
 
     public AudioTranscriptionResult transcribe(Path audioPath, Consumer<AudioTranscriptionProgress> progressListener) {
         Path normalizedAudioPath = audioPath.toAbsolutePath().normalize();
@@ -101,8 +132,8 @@ public class AudioTranscriptionService {
         List<String> results = new ArrayList<>(Collections.nCopies(chunkCount, ""));
         log.info("ASR chunk transcription started: chunks={}, concurrency={}", chunkCount, concurrency);
 
-        try (ExecutorService executor = Executors.newFixedThreadPool(concurrency)) {
-            ExecutorCompletionService<ChunkText> completionService = new ExecutorCompletionService<>(executor);
+        try {
+            ExecutorCompletionService<ChunkText> completionService = new ExecutorCompletionService<>(asrChunkExecutor);
             for (int index = 0; index < chunkFiles.size(); index++) {
                 final int chunkIndex = index;
                 completionService.submit(() -> new ChunkText(chunkIndex, transcribeChunk(chunkFiles.get(chunkIndex))));

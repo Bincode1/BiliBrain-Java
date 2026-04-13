@@ -16,6 +16,7 @@ import com.bin.bilibrain.service.agent.SkillAgentSseService;
 import com.bin.bilibrain.service.agent.UnifiedAgentService;
 import com.bin.bilibrain.service.agent.UnifiedAgentToolBridge;
 import com.bin.bilibrain.service.chat.ConversationService;
+import com.bin.bilibrain.stream.event.SseEventBuilder;
 import com.alibaba.cloud.ai.graph.NodeOutput;
 import com.alibaba.cloud.ai.graph.RunnableConfig;
 import com.alibaba.cloud.ai.graph.agent.ReactAgent;
@@ -46,7 +47,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 @WebMvcTest(SkillAgentController.class)
-@Import({GlobalExceptionHandler.class, SkillAgentSseService.class})
+@Import({GlobalExceptionHandler.class, SkillAgentSseService.class, SseEventBuilder.class})
 class UnifiedAgentStreamTest {
 
     @Autowired

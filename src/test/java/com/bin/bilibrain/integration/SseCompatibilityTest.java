@@ -4,8 +4,6 @@ import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
 import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
 import com.bin.bilibrain.service.agent.AgentExecutionResult;
 import com.bin.bilibrain.service.agent.UnifiedAgentService;
-import com.bin.bilibrain.service.chat.ChatAnswerResult;
-import com.bin.bilibrain.service.chat.ChatAnswerService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,13 +36,10 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
     private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
-    private ChatAnswerService chatAnswerService;
-
-    @MockitoBean
     private UnifiedAgentService unifiedAgentService;
 
     @Test
-    void askStreamKeepsFrontendEventContractAndPersistsMessages() throws Exception {
+    void unifiedAgentStreamKeepsFrontendEventContractAndPersistsMessages() throws Exception {
         when(unifiedAgentService.execute(anyString(), isNull(), eq(""), anyString())).thenReturn(
             new AgentExecutionResult(
                 "这是一个带 sources 的回答。",
@@ -68,7 +63,7 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
             )
         );
 
-        MvcResult mvcResult = mockMvc.perform(post("/api/ask/stream")
+        MvcResult mvcResult = mockMvc.perform(post("/api/skill-agent/stream")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("""
                     {"query":"帮我总结下这个收藏夹"}
@@ -94,45 +89,6 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
         assertThat(content).contains("event:done");
         assertThat(content).contains("\"route\":\"agent\"");
         assertThat(content).contains("\"mode\":\"agent\"");
-
-        Integer conversationCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_conversations", Integer.class);
-        Integer messageCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_messages", Integer.class);
-        assertThat(conversationCount).isEqualTo(1);
-        assertThat(messageCount).isEqualTo(2);
-    }
-
-    @Test
-    void askEndpointReturnsNormalizedPayloadAndPersistsMessages() throws Exception {
-        when(chatAnswerService.answer(anyString(), isNull(), eq(""), anyString())).thenReturn(
-            new ChatAnswerResult(
-                "同步接口回答内容。",
-                "video_summary",
-                "rag",
-                "同步问答命中摘要检索。",
-                List.of(new ChatSourceVO(
-                    "summary",
-                    "BV1summary0001",
-                    3003L,
-                    "摘要视频",
-                    "BinCode",
-                    null,
-                    null,
-                    "这是一段摘要级上下文。"
-                ))
-            )
-        );
-
-        mockMvc.perform(post("/api/ask")
-                .contentType(MediaType.APPLICATION_JSON)
-                .content("""
-                    {"query":"给我一个同步回答"}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.code").value(0))
-            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.answer").value("同步接口回答内容。"))
-            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.route").value("video_summary"))
-            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.mode").value("rag"))
-            .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.data.sources[0].source_type").value("summary"));
 
         Integer conversationCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_conversations", Integer.class);
         Integer messageCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_messages", Integer.class);

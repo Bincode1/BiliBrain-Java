@@ -2,12 +2,9 @@ package com.bin.bilibrain.chat;
 
 import com.bin.bilibrain.controller.ChatController;
 import com.bin.bilibrain.exception.GlobalExceptionHandler;
-import com.bin.bilibrain.model.vo.chat.AskResponse;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
-import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
 import com.bin.bilibrain.service.chat.ConversationService;
-import com.bin.bilibrain.service.chat.SseEventService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
@@ -37,9 +34,6 @@ class ConversationControllerTest {
 
     @MockitoBean
     private ConversationService conversationService;
-
-    @MockitoBean
-    private SseEventService sseEventService;
 
     @Test
     void listConversationsReturnsConversationItems() throws Exception {
@@ -107,32 +101,5 @@ class ConversationControllerTest {
             .andExpect(jsonPath("$.data[0].role").value("USER"))
             .andExpect(jsonPath("$.data[1].role").value("ASSISTANT"))
             .andExpect(jsonPath("$.data[1].route_mode").value("knowledge_base"));
-    }
-
-    @Test
-    void askReturnsSynchronousAnswerPayload() throws Exception {
-        when(sseEventService.ask(any())).thenReturn(new AskResponse(
-            "conv-ask-1",
-            new ChatConversationVO("conv-ask-1", "同步问答", "GENERAL", null, "", 2, "preview", "2026-04-12T12:05:00"),
-            "这是同步回答。",
-            "video_summary",
-            "rag",
-            "命中摘要检索。",
-            List.of(new ChatSourceVO("summary", "BV1ask00001", 2002L, "摘要视频", "BinCode", null, null, "摘要片段")),
-            new ChatMessageVO(2L, "conv-ask-1", "ASSISTANT", "这是同步回答。", "[{\"source_type\":\"summary\"}]", "rag", "video_summary", "2026-04-12T12:05:05")
-        ));
-
-        mockMvc.perform(post("/api/ask")
-                .contentType("application/json")
-                .content("""
-                    {"query":"给我一个同步回答"}
-                    """))
-            .andExpect(status().isOk())
-            .andExpect(jsonPath("$.code").value(0))
-            .andExpect(jsonPath("$.data.conversation_id").value("conv-ask-1"))
-            .andExpect(jsonPath("$.data.answer").value("这是同步回答。"))
-            .andExpect(jsonPath("$.data.route").value("video_summary"))
-            .andExpect(jsonPath("$.data.mode").value("rag"))
-            .andExpect(jsonPath("$.data.sources[0].source_type").value("summary"));
     }
 }

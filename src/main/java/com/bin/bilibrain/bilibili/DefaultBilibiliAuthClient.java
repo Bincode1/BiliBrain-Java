@@ -4,26 +4,46 @@ import com.google.zxing.BarcodeFormat;
 import com.google.zxing.WriterException;
 import com.google.zxing.common.BitMatrix;
 import com.google.zxing.qrcode.QRCodeWriter;
-import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseCookie;
 import org.springframework.stereotype.Component;
 import org.springframework.util.StringUtils;
 import org.springframework.web.reactive.function.client.ClientResponse;
 import org.springframework.web.reactive.function.client.WebClient;
+import org.springframework.web.reactive.function.client.WebClientRequestException;
 import org.springframework.web.util.UriComponentsBuilder;
+import reactor.core.Exceptions;
+import reactor.core.publisher.Mono;
+import reactor.util.retry.Retry;
 
 import java.net.URI;
+import java.time.Duration;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.concurrent.TimeoutException;
 
+@Slf4j
 @Component
-@RequiredArgsConstructor
 public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
     private static final String USER_AGENT =
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
             + "(KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
 
-    private final WebClient.Builder webClientBuilder;
+    private final WebClient bilibiliWebClient;
+    private final Duration requestTimeout;
+    private final int requestRetries;
+    private final Duration retryBackoff;
+
+    public DefaultBilibiliAuthClient(
+        @Qualifier("bilibiliWebClient") WebClient bilibiliWebClient,
+        com.bin.bilibrain.config.AppProperties appProperties
+    ) {
+        this.bilibiliWebClient = bilibiliWebClient;
+        this.requestTimeout = Duration.ofSeconds(appProperties.getBilibili().getHttpTimeoutSeconds());
+        this.requestRetries = appProperties.getBilibili().getHttpRetries();
+        this.retryBackoff = Duration.ofMillis(appProperties.getBilibili().getHttpRetryBackoffMillis());
+    }
 
     @Override
     public BilibiliSessionPayload fetchSession(BilibiliCredential credential) {
@@ -91,28 +111,39 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
     }
 
     private PollResponse exchangePoll(String qrcodeKey) {
-        return webClientBuilder.build()
-            .get()
-            .uri(buildUri(
-                "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
-                Map.of("qrcode_key", qrcodeKey)
-            ))
-            .headers(this::applyDefaultHeaders)
-            .exchangeToMono(response -> response.bodyToMono(Map.class)
-                .defaultIfEmpty(new LinkedHashMap<>())
-                .map(body -> new PollResponse(
-                    castPayload(body),
-                    extractCookies(response)
-                )))
-            .blockOptional()
-            .orElseThrow(() -> new BilibiliClientException("Bilibili 登录轮询返回空响应。"));
+        URI uri = buildUri(
+            "https://passport.bilibili.com/x/passport-login/web/qrcode/poll",
+            Map.of("qrcode_key", qrcodeKey)
+        );
+        try {
+            return bilibiliWebClient.get()
+                .uri(uri)
+                .headers(this::applyDefaultHeaders)
+                .exchangeToMono(response -> adaptPollResponse(uri, response))
+                .timeout(requestTimeout)
+                .doOnSubscribe(ignored -> log.info("client=bilibili operation=qr-poll status=started uri={}", uri))
+                .retryWhen(buildRetrySpec("qr-poll", uri))
+                .doOnSuccess(ignored -> log.info("client=bilibili operation=qr-poll status=success uri={}", uri))
+                .doOnError(exception -> log.warn(
+                    "client=bilibili operation=qr-poll status=failed uri={} exceptionClass={} message={}",
+                    uri,
+                    rootCause(exception).getClass().getSimpleName(),
+                    messageOf(exception),
+                    exception
+                ))
+                .blockOptional()
+                .orElseThrow(() -> new BilibiliClientException("Bilibili 登录轮询返回空响应。"));
+        } catch (BilibiliClientException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BilibiliClientException("请求 Bilibili 失败。", exception);
+        }
     }
 
     private Map<String, Object> getJson(String url, Map<String, Object> params, BilibiliCredential credential) {
         URI uri = buildUri(url, params);
         try {
-            Map<?, ?> payload = webClientBuilder.build()
-                .get()
+            Map<?, ?> payload = bilibiliWebClient.get()
                 .uri(uri)
                 .headers(headers -> {
                     applyDefaultHeaders(headers);
@@ -122,7 +153,32 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
                     }
                 })
                 .retrieve()
+                .onStatus(
+                    status -> status.value() == 429 || status.is5xxServerError(),
+                    clientResponse -> clientResponse.bodyToMono(String.class)
+                        .defaultIfEmpty("")
+                        .map(body -> new RetryableBilibiliHttpException(uri, clientResponse.statusCode().value(), body))
+                )
+                .onStatus(
+                    org.springframework.http.HttpStatusCode::isError,
+                    clientResponse -> clientResponse.bodyToMono(String.class)
+                        .defaultIfEmpty("")
+                        .map(body -> new BilibiliClientException(
+                            "请求 Bilibili 失败: status=%s, body=%s".formatted(clientResponse.statusCode().value(), body)
+                        ))
+                )
                 .bodyToMono(Map.class)
+                .timeout(requestTimeout)
+                .doOnSubscribe(ignored -> log.info("client=bilibili operation=json-get status=started uri={}", uri))
+                .retryWhen(buildRetrySpec("json-get", uri))
+                .doOnSuccess(ignored -> log.info("client=bilibili operation=json-get status=success uri={}", uri))
+                .doOnError(exception -> log.warn(
+                    "client=bilibili operation=json-get status=failed uri={} exceptionClass={} message={}",
+                    uri,
+                    rootCause(exception).getClass().getSimpleName(),
+                    messageOf(exception),
+                    exception
+                ))
                 .block();
 
             if (payload == null) {
@@ -143,6 +199,54 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
         } catch (Exception exception) {
             throw new BilibiliClientException("请求 Bilibili 失败。", exception);
         }
+    }
+
+    private Mono<PollResponse> adaptPollResponse(URI uri, ClientResponse response) {
+        if (response.statusCode().value() == 429 || response.statusCode().is5xxServerError()) {
+            return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> Mono.error(new RetryableBilibiliHttpException(uri, response.statusCode().value(), body)));
+        }
+        if (response.statusCode().isError()) {
+            return response.bodyToMono(String.class)
+                .defaultIfEmpty("")
+                .flatMap(body -> Mono.error(new BilibiliClientException(
+                    "请求 Bilibili 失败: status=%s, body=%s".formatted(response.statusCode().value(), body)
+                )));
+        }
+        return response.bodyToMono(Map.class)
+            .defaultIfEmpty(new LinkedHashMap<>())
+            .map(body -> new PollResponse(castPayload(body), extractCookies(response)));
+    }
+
+    private Retry buildRetrySpec(String operation, URI uri) {
+        return Retry.backoff(requestRetries, retryBackoff)
+            .filter(this::isRetryable)
+            .doBeforeRetry(signal -> log.warn(
+                "client=bilibili operation={} status=retry uri={} attempt={} retryCount={} exceptionClass={} message={}",
+                operation,
+                uri,
+                signal.totalRetries() + 2,
+                signal.totalRetries() + 1,
+                rootCause(signal.failure()).getClass().getSimpleName(),
+                messageOf(signal.failure())
+            ));
+    }
+
+    private boolean isRetryable(Throwable throwable) {
+        Throwable rootCause = rootCause(throwable);
+        return rootCause instanceof RetryableBilibiliHttpException
+            || rootCause instanceof WebClientRequestException
+            || rootCause instanceof TimeoutException;
+    }
+
+    private Throwable rootCause(Throwable throwable) {
+        return Exceptions.unwrap(throwable);
+    }
+
+    private String messageOf(Throwable throwable) {
+        Throwable rootCause = rootCause(throwable);
+        return rootCause.getMessage() == null ? "" : rootCause.getMessage();
     }
 
     private void applyDefaultHeaders(org.springframework.http.HttpHeaders headers) {
@@ -249,5 +353,11 @@ public class DefaultBilibiliAuthClient implements BilibiliAuthClient {
         Map<String, Object> body,
         Map<String, String> cookies
     ) {
+    }
+
+    private static final class RetryableBilibiliHttpException extends BilibiliClientException {
+        private RetryableBilibiliHttpException(URI uri, int status, String body) {
+            super("请求 Bilibili 失败: uri=%s, status=%s, body=%s".formatted(uri, status, body));
+        }
     }
 }

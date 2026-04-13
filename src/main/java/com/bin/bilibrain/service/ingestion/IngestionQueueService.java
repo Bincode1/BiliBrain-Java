@@ -48,7 +48,7 @@ public class IngestionQueueService {
         IngestionDispatcherService ingestionDispatcherService,
         VectorSearchService vectorSearchService,
         JdbcTemplate jdbcTemplate,
-        @Qualifier("applicationTaskExecutor") Executor executor
+        @Qualifier("ingestionTaskExecutor") Executor executor
     ) {
         this.ingestionTaskMapper = ingestionTaskMapper;
         this.videoMapper = videoMapper;

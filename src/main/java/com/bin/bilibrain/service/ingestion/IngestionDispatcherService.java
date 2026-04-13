@@ -19,11 +19,14 @@ import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 @Slf4j
 @Service
 public class IngestionDispatcherService {
+    private static final String BUSY_MESSAGE = "系统繁忙，请稍后重试";
+
     private final IngestionTaskMapper ingestionTaskMapper;
     private final VideoMapper videoMapper;
     private final IngestionGraphRunner ingestionGraphRunner;
@@ -42,7 +45,7 @@ public class IngestionDispatcherService {
         IngestionGraphStateStore ingestionGraphStateStore,
         PipelineStateSupport pipelineStateSupport,
         AppProperties appProperties,
-        @Qualifier("applicationTaskExecutor") Executor executor
+        @Qualifier("ingestionTaskExecutor") Executor executor
     ) {
         this.ingestionTaskMapper = ingestionTaskMapper;
         this.videoMapper = videoMapper;
@@ -55,7 +58,12 @@ public class IngestionDispatcherService {
 
     public void kick() {
         if (dispatching.compareAndSet(false, true)) {
-            CompletableFuture.runAsync(this::dispatchLoop, executor);
+            try {
+                CompletableFuture.runAsync(this::dispatchLoop, executor);
+            } catch (RejectedExecutionException exception) {
+                dispatching.set(false);
+                log.warn("ingestion dispatch loop rejected because executor is busy", exception);
+            }
         }
     }
 
@@ -159,12 +167,18 @@ public class IngestionDispatcherService {
     }
 
     private void launchTask(IngestionTask task) {
-        CompletableFuture<Void> future = CompletableFuture.runAsync(() -> runShellTask(task), executor)
-            .whenComplete((ignored, throwable) -> {
-                runtimeTasks.remove(task.getBvid());
-                kick();
-            });
-        runtimeTasks.put(task.getBvid(), future);
+        try {
+            CompletableFuture<Void> future = CompletableFuture.runAsync(() -> runShellTask(task), executor)
+                .whenComplete((ignored, throwable) -> {
+                    runtimeTasks.remove(task.getBvid());
+                    kick();
+                });
+            runtimeTasks.put(task.getBvid(), future);
+        } catch (RejectedExecutionException exception) {
+            log.warn("ingestion task rejected because executor is busy: bvid={}", task.getBvid(), exception);
+            markTaskFinished(task.getTaskId(), "failed", BUSY_MESSAGE);
+            markPipelineFailed(task.getBvid(), BUSY_MESSAGE);
+        }
     }
 
     private void runShellTask(IngestionTask task) {
@@ -221,4 +235,3 @@ public class IngestionDispatcherService {
         }
     }
 }
-

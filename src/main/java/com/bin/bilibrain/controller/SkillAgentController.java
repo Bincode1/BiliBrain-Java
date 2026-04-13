@@ -6,11 +6,12 @@ import com.bin.bilibrain.service.agent.SkillAgentSseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
+import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
-import org.springframework.web.servlet.mvc.method.annotation.SseEmitter;
+import reactor.core.publisher.Flux;
 
 @RestController
 @RequestMapping("/api/skill-agent")
@@ -19,12 +20,12 @@ public class SkillAgentController {
     private final SkillAgentSseService skillAgentSseService;
 
     @PostMapping(path = "/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter stream(@Valid @RequestBody AgentStreamRequest request) {
+    public Flux<ServerSentEvent<Object>> stream(@Valid @RequestBody AgentStreamRequest request) {
         return skillAgentSseService.stream(request);
     }
 
     @PostMapping(path = "/resume/stream", produces = MediaType.TEXT_EVENT_STREAM_VALUE)
-    public SseEmitter resume(@Valid @RequestBody AgentResumeStreamRequest request) {
+    public Flux<ServerSentEvent<Object>> resume(@Valid @RequestBody AgentResumeStreamRequest request) {
         return skillAgentSseService.resume(request);
     }
 }

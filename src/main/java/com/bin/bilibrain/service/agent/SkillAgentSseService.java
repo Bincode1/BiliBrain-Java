@@ -134,28 +134,39 @@ public class SkillAgentSseService {
                 lastOutput,
                 runtime.bridge()
             );
-            emitResult(emitter, conversation, result, streamedAnswerRef.get().length() > 0);
+            emitResult(
+                emitter,
+                conversation,
+                result,
+                streamedAnswerRef.get().length() > 0,
+                sentSkillEvents.get(),
+                sentToolEvents.get()
+            );
         } catch (Exception exception) {
             completeWithError(emitter, exception);
         }
     }
 
     private void emitResult(SseEmitter emitter, ChatConversationVO conversation, AgentExecutionResult result) throws IOException {
-        emitResult(emitter, conversation, result, false);
+        emitResult(emitter, conversation, result, false, 0, 0);
     }
 
     private void emitResult(
         SseEmitter emitter,
         ChatConversationVO conversation,
         AgentExecutionResult result,
-        boolean answerAlreadyStreamed
+        boolean answerAlreadyStreamed,
+        int sentSkillEventCount,
+        int sentToolEventCount
     ) throws IOException {
         send(emitter, "skills", Map.of("items", result.activeSkills(), "active_skills", result.activeSkills()));
-        for (var skillEvent : result.skillEvents()) {
-            send(emitter, "skill", skillEvent);
+        List<?> skillEvents = result.skillEvents();
+        for (int index = Math.max(sentSkillEventCount, 0); index < skillEvents.size(); index++) {
+            send(emitter, "skill", skillEvents.get(index));
         }
-        for (var toolEvent : result.toolEvents()) {
-            send(emitter, "tool", toolEvent);
+        List<?> toolEvents = result.toolEvents();
+        for (int index = Math.max(sentToolEventCount, 0); index < toolEvents.size(); index++) {
+            send(emitter, "tool", toolEvents.get(index));
         }
         send(emitter, "reasoning", Map.of("content", result.reasoning(), "delta", result.reasoning()));
         send(emitter, "route", Map.of("route", result.route(), "route_mode", result.route()));

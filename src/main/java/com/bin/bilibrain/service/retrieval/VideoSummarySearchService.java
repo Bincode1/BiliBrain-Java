@@ -11,7 +11,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.util.StringUtils;
 
-import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
@@ -39,9 +38,11 @@ public class VideoSummarySearchService {
 
         return candidates.stream()
             .map(summary -> toSource(summary, videos.get(summary.getBvid())))
-            .filter(source -> matchesQuery(source, query))
-            .sorted(Comparator.comparing(ChatSourceVO::videoTitle, String.CASE_INSENSITIVE_ORDER))
-            .limit(appProperties.getRetrieval().getSearchTopK())
+            .sorted(Comparator
+                .comparingInt((ChatSourceVO source) -> matchScore(source, query))
+                .reversed()
+                .thenComparing(ChatSourceVO::videoTitle, String.CASE_INSENSITIVE_ORDER))
+            .limit(resolveLimit(candidates.size(), query))
             .toList();
     }
 
@@ -51,13 +52,12 @@ public class VideoSummarySearchService {
             return summary == null ? List.of() : List.of(summary);
         }
 
-        List<VideoSummary> latestSummaries = videoSummaryMapper.selectList(
-            new LambdaQueryWrapper<VideoSummary>()
-                .orderByDesc(VideoSummary::getUpdatedAt)
-                .last("LIMIT 50")
-        );
         if (folderId == null) {
-            return latestSummaries;
+            return videoSummaryMapper.selectList(
+                new LambdaQueryWrapper<VideoSummary>()
+                    .orderByDesc(VideoSummary::getUpdatedAt)
+                    .last("LIMIT 50")
+            );
         }
 
         Set<String> folderVideoIds = videoMapper.selectList(
@@ -68,20 +68,76 @@ public class VideoSummarySearchService {
             .map(Video::getBvid)
             .collect(Collectors.toSet());
 
-        return latestSummaries.stream()
-            .filter(summary -> folderVideoIds.contains(summary.getBvid()))
+        if (folderVideoIds.isEmpty()) {
+            return List.of();
+        }
+
+        return videoSummaryMapper.selectBatchIds(folderVideoIds).stream()
+            .filter(summary -> summary != null && StringUtils.hasText(summary.getSummaryText()))
+            .sorted(Comparator.comparing(VideoSummary::getUpdatedAt, java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
             .toList();
     }
 
-    private boolean matchesQuery(ChatSourceVO source, String query) {
+    private int matchScore(ChatSourceVO source, String query) {
+        String haystack = (safe(source.videoTitle()) + "\n" + safe(source.upName()) + "\n" + safe(source.excerpt()))
+            .toLowerCase();
+        if (!StringUtils.hasText(query)) {
+            return 0;
+        }
+        String normalizedQuery = query.trim().toLowerCase();
+        int score = 0;
+        if (haystack.contains(normalizedQuery)) {
+            score += 5;
+        }
+        for (String token : summaryTokens(normalizedQuery)) {
+            if (!token.isBlank() && haystack.contains(token)) {
+                score += 2;
+            }
+        }
+        return score;
+    }
+
+    private int resolveLimit(int candidateCount, String query) {
+        if (isBroadSummaryQuery(query)) {
+            return candidateCount;
+        }
+        return appProperties.getRetrieval().getSearchTopK();
+    }
+
+    private boolean isBroadSummaryQuery(String query) {
         if (!StringUtils.hasText(query)) {
             return true;
         }
-        String haystack = (safe(source.videoTitle()) + "\n" + safe(source.upName()) + "\n" + safe(source.excerpt()))
-            .toLowerCase();
-        return Arrays.stream(query.trim().toLowerCase().split("\\s+"))
-            .filter(token -> !token.isBlank())
-            .anyMatch(haystack::contains);
+        String normalized = query.trim().toLowerCase();
+        return normalized.contains("总结")
+            || normalized.contains("概括")
+            || normalized.contains("归纳")
+            || normalized.contains("梳理")
+            || normalized.contains("收藏夹")
+            || normalized.contains("整体")
+            || normalized.contains("全部")
+            || normalized.contains("这一组")
+            || normalized.contains("这组");
+    }
+
+    private List<String> summaryTokens(String normalizedQuery) {
+        java.util.LinkedHashSet<String> tokens = new java.util.LinkedHashSet<>();
+        for (String token : normalizedQuery.split("\\s+")) {
+            if (!token.isBlank()) {
+                tokens.add(token);
+            }
+        }
+        String compact = normalizedQuery.replace(" ", "");
+        if (compact.length() >= 2) {
+            tokens.add(compact);
+        }
+        List<String> keywords = List.of("总结", "概括", "归纳", "梳理", "收藏夹", "视频", "整体", "全部");
+        for (String keyword : keywords) {
+            if (compact.contains(keyword)) {
+                tokens.add(keyword);
+            }
+        }
+        return List.copyOf(tokens);
     }
 
     private ChatSourceVO toSource(VideoSummary summary, Video video) {

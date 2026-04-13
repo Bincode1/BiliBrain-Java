@@ -31,6 +31,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -55,7 +57,7 @@ class UnifiedAgentStreamTest {
 
     @Test
     void streamProducesSkillsToolAndDoneEvents() throws Exception {
-        when(conversationService.createConversation(any())).thenReturn(
+        when(conversationService.ensureConversation(any(), any(), any(), any(), any(), any())).thenReturn(
             new ChatConversationVO("conv-agent", "Agent 对话", "AGENT", 3003L, "BV1agent111", 0, "", "2026-04-12T13:20:00")
         );
         when(unifiedAgentService.execute("conv-agent", 3003L, "BV1agent111", "帮我总结一下这个视频")).thenReturn(
@@ -111,6 +113,7 @@ class UnifiedAgentStreamTest {
                     """))
             .andExpect(request().asyncStarted())
             .andReturn();
+        mvcResult.getAsyncResult(5000);
 
         MvcResult asyncResult = mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk())
@@ -129,7 +132,7 @@ class UnifiedAgentStreamTest {
 
     @Test
     void streamProducesApprovalEventWhenAgentNeedsConfirmation() throws Exception {
-        when(conversationService.createConversation(any())).thenReturn(
+        when(conversationService.ensureConversation(any(), any(), any(), any(), any(), any())).thenReturn(
             new ChatConversationVO("conv-approval", "Agent 审批", "AGENT", null, "", 0, "", "2026-04-12T13:22:00")
         );
         when(unifiedAgentService.execute("conv-approval", null, "", "列出工作区")).thenReturn(
@@ -189,6 +192,7 @@ class UnifiedAgentStreamTest {
                     """))
             .andExpect(request().asyncStarted())
             .andReturn();
+        mvcResult.getAsyncResult(5000);
 
         MvcResult asyncResult = mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk())
@@ -199,5 +203,71 @@ class UnifiedAgentStreamTest {
         assertThat(content).contains("event:status");
         assertThat(content).contains("event:answer_normalized");
         assertThat(content).contains("\"tool_name\":\"list_workspaces\"");
+    }
+
+    @Test
+    void streamUsesCurrentRequestFolderScopeForExistingConversation() throws Exception {
+        when(conversationService.ensureConversation(any(), any(), any(), any(), any(), any())).thenReturn(
+            new ChatConversationVO("conv-scope", "Agent 对话", "AGENT", 3003L, "", 2, "", "2026-04-13T12:00:00")
+        );
+        when(unifiedAgentService.execute("conv-scope", 3003L, "", "总结一下收藏夹")).thenReturn(
+            new AgentExecutionResult(
+                "这是当前收藏夹的总结。",
+                "agent",
+                "agent",
+                "当前请求已明确指定收藏夹范围，优先使用该范围执行检索与总结。",
+                List.of(),
+                List.of(),
+                List.of(),
+                List.of(),
+                null
+            )
+        );
+        when(conversationService.appendMessage(anyString(), anyString(), anyString(), anyString()))
+            .thenReturn(ChatMessage.builder()
+                .id(5L)
+                .conversationId("conv-scope")
+                .role("USER")
+                .content("总结一下收藏夹")
+                .sourcesJson("[]")
+                .createdAt(LocalDateTime.now())
+                .build());
+        when(conversationService.appendAssistantMessage(
+            anyString(),
+            anyString(),
+            anyList(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyList(),
+            anyList(),
+            anyList(),
+            any()
+        ))
+            .thenReturn(ChatMessage.builder()
+                .id(6L)
+                .conversationId("conv-scope")
+                .role("ASSISTANT")
+                .content("这是当前收藏夹的总结。")
+                .sourcesJson("[]")
+                .answerMode("agent")
+                .routeMode("agent")
+                .createdAt(LocalDateTime.now())
+                .build());
+
+        MvcResult mvcResult = mockMvc.perform(post("/api/skill-agent/stream")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("""
+                    {"conversation_id":"conv-scope","message":"总结一下收藏夹","folder_id":3003,"scope_mode":"folder"}
+                    """))
+            .andExpect(request().asyncStarted())
+            .andReturn();
+        mvcResult.getAsyncResult(5000);
+
+        mockMvc.perform(asyncDispatch(mvcResult))
+            .andExpect(status().isOk());
+
+        verify(unifiedAgentService).execute("conv-scope", 3003L, "", "总结一下收藏夹");
     }
 }

@@ -1,5 +1,6 @@
 package com.bin.bilibrain.model.dto.agent;
 
+import com.fasterxml.jackson.annotation.JsonAlias;
 import com.fasterxml.jackson.databind.PropertyNamingStrategies;
 import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.validation.Valid;
@@ -12,6 +13,10 @@ import java.util.List;
 public record AgentResumeStreamRequest(
     @NotBlank(message = "conversation_id 不能为空")
     String conversationId,
+    Long folderId,
+    @JsonAlias("bvid")
+    String videoBvid,
+    String scopeMode,
     @NotEmpty(message = "feedbacks 不能为空")
     List<@Valid AgentApprovalDecisionRequest> feedbacks
 ) {

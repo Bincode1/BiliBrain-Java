@@ -1,11 +1,12 @@
 package com.bin.bilibrain.service.chat;
 
 import com.bin.bilibrain.model.dto.chat.AskRequest;
-import com.bin.bilibrain.model.dto.chat.CreateConversationRequest;
+import com.bin.bilibrain.model.dto.agent.AgentStreamRequest;
 import com.bin.bilibrain.model.entity.ChatMessage;
 import com.bin.bilibrain.model.vo.chat.AskResponse;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
+import com.bin.bilibrain.service.agent.SkillAgentSseService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -21,6 +22,7 @@ import java.util.Map;
 public class SseEventService {
     private final ConversationService conversationService;
     private final ChatAnswerService chatAnswerService;
+    private final org.springframework.beans.factory.ObjectProvider<SkillAgentSseService> skillAgentSseServiceProvider;
 
     public AskResponse ask(AskRequest request) {
         PreparedConversation preparedConversation = prepareConversation(request);
@@ -57,6 +59,17 @@ public class SseEventService {
     }
 
     public SseEmitter streamAnswer(AskRequest request) {
+        SkillAgentSseService skillAgentSseService = skillAgentSseServiceProvider.getIfAvailable();
+        if (skillAgentSseService != null) {
+            return skillAgentSseService.stream(new AgentStreamRequest(
+                request.conversationId(),
+                request.conversationType(),
+                request.folderId(),
+                request.videoBvid(),
+                request.scopeMode(),
+                request.message()
+            ));
+        }
         SseEmitter emitter = new SseEmitter(0L);
         try {
             PreparedConversation preparedConversation = prepareConversation(request);
@@ -134,14 +147,14 @@ public class SseEventService {
 
     private PreparedConversation prepareConversation(AskRequest request) {
         boolean created = !StringUtils.hasText(request.conversationId());
-        ChatConversationVO conversation = created
-            ? conversationService.createConversation(new CreateConversationRequest(
-                buildTitleHint(request.message()),
-                request.conversationType(),
-                request.folderId(),
-                request.videoBvid()
-            ))
-            : conversationService.getConversation(request.conversationId());
+        ChatConversationVO conversation = conversationService.ensureConversation(
+            request.conversationId(),
+            buildTitleHint(request.message()),
+            request.conversationType(),
+            request.folderId(),
+            request.videoBvid(),
+            request.scopeMode()
+        );
         return new PreparedConversation(created, conversation);
     }
 

@@ -2,7 +2,6 @@ package com.bin.bilibrain.service.agent;
 
 import com.bin.bilibrain.model.dto.agent.AgentResumeStreamRequest;
 import com.bin.bilibrain.model.dto.agent.AgentStreamRequest;
-import com.bin.bilibrain.model.dto.chat.CreateConversationRequest;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
 import com.bin.bilibrain.service.chat.ConversationService;
@@ -52,7 +51,15 @@ public class SkillAgentSseService {
         SseEmitter emitter = new SseEmitter(0L);
         executor.execute(() -> {
             try {
-                ChatConversationVO conversation = conversationService.getConversation(request.conversationId());
+                ChatConversationVO currentConversation = conversationService.getConversation(request.conversationId());
+                ChatConversationVO conversation = conversationService.ensureConversation(
+                    request.conversationId(),
+                    currentConversation.title(),
+                    currentConversation.conversationType(),
+                    request.folderId(),
+                    request.videoBvid(),
+                    request.scopeMode()
+                );
                 send(emitter, "conversation", Map.of("created", false, "conversation", conversation, "conversation_id", conversation.id()));
                 String resumingMessage = "正在恢复统一 Agent 执行";
                 send(emitter, "status", Map.of("stage", "resuming", "message", resumingMessage, "delta", resumingMessage));
@@ -74,14 +81,14 @@ public class SkillAgentSseService {
     private void doStream(AgentStreamRequest request, SseEmitter emitter) {
         try {
             boolean created = !StringUtils.hasText(request.conversationId());
-            ChatConversationVO conversation = created
-                ? conversationService.createConversation(new CreateConversationRequest(
-                    buildTitleHint(request.message()),
-                    "AGENT",
-                    request.folderId(),
-                    request.videoBvid()
-                ))
-                : conversationService.getConversation(request.conversationId());
+            ChatConversationVO conversation = conversationService.ensureConversation(
+                request.conversationId(),
+                buildTitleHint(request.message()),
+                StringUtils.hasText(request.conversationType()) ? request.conversationType() : "AGENT",
+                request.folderId(),
+                request.videoBvid(),
+                request.scopeMode()
+            );
 
             send(emitter, "conversation", Map.of("created", created, "conversation", conversation, "conversation_id", conversation.id()));
             conversationService.appendMessage(conversation.id(), "USER", request.message(), "[]");

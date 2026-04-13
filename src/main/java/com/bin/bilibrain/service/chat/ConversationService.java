@@ -8,6 +8,7 @@ import com.bin.bilibrain.mapper.ChatConversationContextStatMapper;
 import com.bin.bilibrain.mapper.ChatConversationMapper;
 import com.bin.bilibrain.mapper.ChatConversationMemoryMapper;
 import com.bin.bilibrain.mapper.ChatMessageMapper;
+import com.bin.bilibrain.service.agent.AgentScopeService;
 import com.bin.bilibrain.model.dto.chat.CreateConversationRequest;
 import com.bin.bilibrain.model.dto.chat.UpdateConversationRequest;
 import com.bin.bilibrain.model.entity.ChatConversation;
@@ -43,6 +44,7 @@ public class ConversationService {
     private final ChatConversationMemoryMapper chatConversationMemoryMapper;
     private final ChatConversationContextStatMapper chatConversationContextStatMapper;
     private final ConversationMemoryService conversationMemoryService;
+    private final AgentScopeService agentScopeService;
     private final ObjectMapper objectMapper;
 
     public List<ChatConversationVO> listConversations() {
@@ -84,6 +86,43 @@ public class ConversationService {
     }
 
     public ChatConversationVO getConversation(String conversationId) {
+        return toConversationVO(requireConversation(conversationId));
+    }
+
+    public ChatConversationVO ensureConversation(
+        String conversationId,
+        String titleHint,
+        String conversationType,
+        Long folderId,
+        String videoBvid,
+        String scopeMode
+    ) {
+        if (!StringUtils.hasText(conversationId)) {
+            AgentScopeService.ScopeSelection scope = agentScopeService.resolveScope(scopeMode, folderId, videoBvid);
+            return createConversation(new CreateConversationRequest(
+                titleHint,
+                conversationType,
+                scope.folderId(),
+                scope.videoBvid()
+            ));
+        }
+
+        ChatConversation conversation = requireConversation(conversationId);
+        if (!agentScopeService.hasExplicitScope(scopeMode, folderId, videoBvid)) {
+            return toConversationVO(conversation);
+        }
+
+        AgentScopeService.ScopeSelection scope = agentScopeService.resolveScope(scopeMode, folderId, videoBvid);
+        boolean changed = !java.util.Objects.equals(conversation.getFolderId(), scope.folderId())
+            || !java.util.Objects.equals(blankToNull(conversation.getVideoBvid()), blankToNull(scope.videoBvid()));
+        if (!changed) {
+            return toConversationVO(conversation);
+        }
+
+        conversation.setFolderId(scope.folderId());
+        conversation.setVideoBvid(blankToNull(scope.videoBvid()));
+        conversation.setUpdatedAt(LocalDateTime.now());
+        chatConversationMapper.updateById(conversation);
         return toConversationVO(requireConversation(conversationId));
     }
 

@@ -19,6 +19,7 @@ public class UnifiedAgentToolBridge {
     private final ToolService toolService;
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
+    private final AgentScopeService agentScopeService;
     private final Long folderId;
     private final String videoBvid;
     private final List<AgentToolEventVO> toolEvents = new ArrayList<>();
@@ -29,12 +30,14 @@ public class UnifiedAgentToolBridge {
         ToolService toolService,
         KnowledgeBaseSearchService knowledgeBaseSearchService,
         VideoSummarySearchService videoSummarySearchService,
+        AgentScopeService agentScopeService,
         Long folderId,
         String videoBvid
     ) {
         this.toolService = toolService;
         this.knowledgeBaseSearchService = knowledgeBaseSearchService;
         this.videoSummarySearchService = videoSummarySearchService;
+        this.agentScopeService = agentScopeService;
         this.folderId = folderId;
         this.videoBvid = videoBvid;
     }
@@ -66,24 +69,6 @@ public class UnifiedAgentToolBridge {
         }
     }
 
-    @Tool(name = ToolService.TOOL_LIST_WORKSPACES, description = "列出当前可用的工作区")
-    public Map<String, Object> listWorkspaces() {
-        Map<String, Object> summary = Map.of("scope", "registered_workspaces");
-        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_LIST_WORKSPACES, summary));
-        try {
-            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_LIST_WORKSPACES, null, null));
-            toolEvents.add(AgentToolEventVO.finish(
-                ToolService.TOOL_LIST_WORKSPACES,
-                summary,
-                Map.of("count", result.result().getOrDefault("count", 0))
-            ));
-            return result.result();
-        } catch (RuntimeException exception) {
-            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_LIST_WORKSPACES, summary, exception.getMessage()));
-            throw exception;
-        }
-    }
-
     @Tool(name = "search_knowledge_base", description = "搜索 transcript chunk 级知识库片段")
     public Map<String, Object> searchKnowledgeBase(
         @ToolParam(description = "用户的当前问题") String query
@@ -92,6 +77,15 @@ public class UnifiedAgentToolBridge {
         toolEvents.add(AgentToolEventVO.start("search_knowledge_base", summary));
         try {
             List<ChatSourceVO> sources = knowledgeBaseSearchService.searchKnowledgeBase(query, folderId, videoBvid);
+            if (sources.isEmpty()) {
+                String message = agentScopeService.emptyContextMessage("", folderId, videoBvid);
+                toolEvents.add(AgentToolEventVO.finish(
+                    "search_knowledge_base",
+                    summary,
+                    Map.of("count", 0, "message", message)
+                ));
+                return Map.of("count", 0, "sources", List.of(), "message", message);
+            }
             collectedSources.addAll(sources);
             toolEvents.add(AgentToolEventVO.finish(
                 "search_knowledge_base",
@@ -113,6 +107,15 @@ public class UnifiedAgentToolBridge {
         toolEvents.add(AgentToolEventVO.start("search_video_summaries", summary));
         try {
             List<ChatSourceVO> sources = videoSummarySearchService.searchVideoSummaries(query, folderId, videoBvid);
+            if (sources.isEmpty()) {
+                String message = agentScopeService.emptyContextMessage("", folderId, videoBvid);
+                toolEvents.add(AgentToolEventVO.finish(
+                    "search_video_summaries",
+                    summary,
+                    Map.of("count", 0, "message", message)
+                ));
+                return Map.of("count", 0, "sources", List.of(), "message", message);
+            }
             collectedSources.addAll(sources);
             toolEvents.add(AgentToolEventVO.finish(
                 "search_video_summaries",

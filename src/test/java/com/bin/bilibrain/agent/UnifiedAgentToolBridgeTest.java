@@ -1,13 +1,16 @@
 package com.bin.bilibrain.agent;
 
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
+import com.bin.bilibrain.service.agent.AgentScopeService;
 import com.bin.bilibrain.model.vo.tools.ToolCallResultVO;
 import com.bin.bilibrain.service.agent.UnifiedAgentToolBridge;
 import com.bin.bilibrain.service.retrieval.KnowledgeBaseSearchService;
 import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import com.bin.bilibrain.service.tools.ToolService;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.tool.annotation.Tool;
 
+import java.lang.reflect.Method;
 import java.util.List;
 import java.util.Map;
 
@@ -23,6 +26,7 @@ class UnifiedAgentToolBridgeTest {
         ToolService toolService = mock(ToolService.class);
         KnowledgeBaseSearchService knowledgeBaseSearchService = mock(KnowledgeBaseSearchService.class);
         VideoSummarySearchService videoSummarySearchService = mock(VideoSummarySearchService.class);
+        AgentScopeService agentScopeService = mock(AgentScopeService.class);
         when(toolService.callTool(any())).thenReturn(
             new ToolCallResultVO(1L, "read_skill", "SUCCESS", Map.of(
                 "name", "java-rag",
@@ -35,6 +39,7 @@ class UnifiedAgentToolBridgeTest {
             toolService,
             knowledgeBaseSearchService,
             videoSummarySearchService,
+            agentScopeService,
             null,
             null
         );
@@ -54,6 +59,7 @@ class UnifiedAgentToolBridgeTest {
         ToolService toolService = mock(ToolService.class);
         KnowledgeBaseSearchService knowledgeBaseSearchService = mock(KnowledgeBaseSearchService.class);
         VideoSummarySearchService videoSummarySearchService = mock(VideoSummarySearchService.class);
+        AgentScopeService agentScopeService = mock(AgentScopeService.class);
         when(knowledgeBaseSearchService.searchKnowledgeBase("RAG 细节", 2002L, "BV1kb111")).thenReturn(
             List.of(new ChatSourceVO("chunk", "BV1kb111", 2002L, "RAG 视频", "BinCode", 12.0, 36.0, "这里讲了 RAG 细节"))
         );
@@ -62,6 +68,7 @@ class UnifiedAgentToolBridgeTest {
             toolService,
             knowledgeBaseSearchService,
             videoSummarySearchService,
+            agentScopeService,
             2002L,
             "BV1kb111"
         );
@@ -74,5 +81,21 @@ class UnifiedAgentToolBridgeTest {
         assertThat(bridge.toolEvents().get(0).name()).isEqualTo("search_knowledge_base");
         assertThat(bridge.toolEvents().get(0).phase()).isEqualTo("start");
         assertThat(bridge.toolEvents().get(1).phase()).isEqualTo("finish");
+    }
+
+    @Test
+    void unifiedAgentMethodToolsDoNotExposeListWorkspaces() {
+        List<String> toolNames = java.util.Arrays.stream(UnifiedAgentToolBridge.class.getDeclaredMethods())
+            .map(this::resolveToolName)
+            .filter(name -> !name.isBlank())
+            .toList();
+
+        assertThat(toolNames).contains(ToolService.TOOL_READ_SKILL, "search_knowledge_base", "search_video_summaries");
+        assertThat(toolNames).doesNotContain(ToolService.TOOL_LIST_WORKSPACES);
+    }
+
+    private String resolveToolName(Method method) {
+        Tool tool = method.getAnnotation(Tool.class);
+        return tool == null ? "" : tool.name();
     }
 }

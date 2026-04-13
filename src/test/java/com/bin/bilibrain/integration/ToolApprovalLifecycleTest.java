@@ -94,6 +94,7 @@ class ToolApprovalLifecycleTest extends AbstractMySqlIntegrationTest {
                     """.formatted(conversationId)))
             .andExpect(request().asyncStarted())
             .andReturn();
+        approvalResult.getAsyncResult(5000);
 
         String approvalContent = mockMvc.perform(asyncDispatch(approvalResult))
             .andExpect(status().isOk())
@@ -116,6 +117,7 @@ class ToolApprovalLifecycleTest extends AbstractMySqlIntegrationTest {
                     """.formatted(conversationId)))
             .andExpect(request().asyncStarted())
             .andReturn();
+        resumeResult.getAsyncResult(5000);
 
         String resumeContent = mockMvc.perform(asyncDispatch(resumeResult))
             .andExpect(status().isOk())

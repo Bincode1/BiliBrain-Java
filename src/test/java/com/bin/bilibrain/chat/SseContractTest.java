@@ -45,7 +45,7 @@ class SseContractTest {
 
     @Test
     void askStreamProducesStableSseFrameNames() throws Exception {
-        when(conversationService.createConversation(any())).thenReturn(
+        when(conversationService.ensureConversation(any(), any(), any(), any(), any(), any())).thenReturn(
             new ChatConversationVO("conv-sse", "SSE 会话", "GENERAL", 3003L, "", 0, "", "2026-04-12T12:10:00")
         );
         when(chatAnswerService.answer("conv-sse", 3003L, "", "你好，帮我总结一下")).thenReturn(
@@ -113,6 +113,7 @@ class SseContractTest {
                     """))
             .andExpect(request().asyncStarted())
             .andReturn();
+        mvcResult.getAsyncResult(5000);
 
         MvcResult asyncResult = mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk())

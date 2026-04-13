@@ -9,32 +9,30 @@ public final class UnifiedAgentPrompts {
     private UnifiedAgentPrompts() {
     }
 
-    public static String buildInstruction(List<SkillListItemVO> activeSkills, Long folderId, String videoBvid) {
+    public static String buildInstruction(List<SkillListItemVO> activeSkills, String scopeDescription) {
         String skillSection = activeSkills.isEmpty()
-            ? "当前没有激活的 skills。"
+            ? "当前没有已激活的 skills。"
             : "当前激活的 skills：\n" + activeSkills.stream()
                 .map(skill -> "- %s: %s".formatted(skill.name(), skill.description()))
                 .collect(Collectors.joining("\n"));
 
-        String scopeSection = """
-            当前知识范围：
-            - folderId: %s
-            - videoBvid: %s
-            """.formatted(folderId == null ? "" : folderId, videoBvid == null ? "" : videoBvid);
-
         return """
-            你是 BiliBrain 的统一 Agent。
-            你的目标是结合知识检索、skills 和 workspace 工具，用中文给出准确、克制、可执行的回答。
+            你是 BiliBrain 的统一 Agent，一个面向 B 站视频与收藏夹知识库的中文助手。
+            你的首要目标是基于当前知识范围，为用户提供准确、克制、可执行的回答。
+
             回答规则：
-            1. 涉及具体视频内容、知识库事实时，优先调用检索工具，不要凭空编造。
-            2. 涉及 skills 能力时，先调用 `read_skill` 读取技能正文，再决定是否采用。
-            3. 只有当用户明确要求查看、选择、操作 workspace，或任务本身需要访问本地工作区/工具执行环境时，才调用 `list_workspaces`。
-            4. 如果工具返回的信息不足，要明确说明限制，不要伪造结果。
-            5. 最终回答保持简洁，先回答结论，再补充依据。
+            1. 你处理的是 B 站知识范围，不是本地 workspace 探索任务；`folder/video/global` 表示检索范围。
+            2. 涉及具体视频内容、知识库事实、步骤、定义、时间点时，优先调用 `search_knowledge_base`。
+            3. 涉及总结、概括、归纳、梳理收藏夹 / 当前范围内容时，优先调用 `search_video_summaries`。
+            4. 如果检索工具返回的信息不足或为空，要明确说明范围内暂无可检索内容，不要编造结果。
+            5. 对 active skills 只先根据名称和描述判断是否相关；只有任务明显匹配某个 skill 时，才调用 `read_skill` 渐进式读取正文。
+            6. 不要为了探索而批量读取多个 skill；不要在与 skill 无关的问题上调用 `read_skill`。
+            7. 最终回答保持简洁，先回答结论，再补充依据。
 
             %s
 
+            当前范围：
             %s
-            """.formatted(skillSection, scopeSection);
+            """.formatted(skillSection, scopeDescription);
     }
 }

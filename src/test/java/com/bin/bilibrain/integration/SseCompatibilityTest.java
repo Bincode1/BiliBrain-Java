@@ -1,6 +1,9 @@
 package com.bin.bilibrain.integration;
 
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
+import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
+import com.bin.bilibrain.service.agent.AgentExecutionResult;
+import com.bin.bilibrain.service.agent.UnifiedAgentService;
 import com.bin.bilibrain.service.chat.ChatAnswerResult;
 import com.bin.bilibrain.service.chat.ChatAnswerService;
 import com.bin.bilibrain.support.AbstractMySqlIntegrationTest;
@@ -37,14 +40,17 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
     @MockitoBean
     private ChatAnswerService chatAnswerService;
 
+    @MockitoBean
+    private UnifiedAgentService unifiedAgentService;
+
     @Test
     void askStreamKeepsFrontendEventContractAndPersistsMessages() throws Exception {
-        when(chatAnswerService.answer(anyString(), isNull(), eq(""), anyString())).thenReturn(
-            new ChatAnswerResult(
+        when(unifiedAgentService.execute(anyString(), isNull(), eq(""), anyString())).thenReturn(
+            new AgentExecutionResult(
                 "这是一个带 sources 的回答。",
-                "knowledge_base",
-                "rag",
-                "命中知识库片段，按 RAG 模式组织回答。",
+                "agent",
+                "agent",
+                "命中知识库片段，按 Agent 模式组织回答。",
                 List.of(new ChatSourceVO(
                     "chunk",
                     "BV1rag0001",
@@ -54,7 +60,11 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
                     12.0,
                     18.0,
                     "这里解释了知识库检索的关键步骤。"
-                ))
+                )),
+                List.of(new SkillListItemVO("java-rag", "Java RAG", "skills/java-rag/SKILL.md", true)),
+                List.of(),
+                List.of(),
+                null
             )
         );
 
@@ -65,6 +75,7 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
                     """))
             .andExpect(request().asyncStarted())
             .andReturn();
+        mvcResult.getAsyncResult(5000);
 
         MvcResult asyncResult = mockMvc.perform(asyncDispatch(mvcResult))
             .andExpect(status().isOk())
@@ -79,9 +90,10 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
         assertThat(content).contains("event:sources");
         assertThat(content).contains("event:answer");
         assertThat(content).contains("event:answer_normalized");
+        assertThat(content).contains("event:skills");
         assertThat(content).contains("event:done");
-        assertThat(content).contains("\"route\":\"knowledge_base\"");
-        assertThat(content).contains("\"mode\":\"rag\"");
+        assertThat(content).contains("\"route\":\"agent\"");
+        assertThat(content).contains("\"mode\":\"agent\"");
 
         Integer conversationCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_conversations", Integer.class);
         Integer messageCount = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM chat_messages", Integer.class);

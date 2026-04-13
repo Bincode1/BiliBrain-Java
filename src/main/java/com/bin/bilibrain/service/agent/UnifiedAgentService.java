@@ -27,8 +27,6 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
-import org.springframework.beans.factory.ObjectProvider;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -52,6 +50,7 @@ public class UnifiedAgentService {
     private final SkillRegistryService skillRegistryService;
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
+    private final AgentScopeService agentScopeService;
     private final PendingApprovalStore pendingApprovalStore;
 
     public AgentExecutionResult execute(
@@ -64,10 +63,11 @@ public class UnifiedAgentService {
             toolService,
             knowledgeBaseSearchService,
             videoSummarySearchService,
+            agentScopeService,
             folderId,
             videoBvid
         );
-        ReactAgent agent = buildAgent(bridge, listActiveSkills(), folderId, videoBvid);
+        ReactAgent agent = buildAgent(bridge, listActiveSkills(), agentScopeService.describeScope("", folderId, videoBvid));
         RunnableConfig config = RunnableConfig.builder()
             .threadId(conversationId)
             .build();
@@ -97,11 +97,12 @@ public class UnifiedAgentService {
             toolService,
             knowledgeBaseSearchService,
             videoSummarySearchService,
+            agentScopeService,
             folderId,
             videoBvid
         );
         List<SkillListItemVO> activeSkills = listActiveSkills();
-        ReactAgent agent = buildAgent(bridge, activeSkills, folderId, videoBvid);
+        ReactAgent agent = buildAgent(bridge, activeSkills, agentScopeService.describeScope("", folderId, videoBvid));
         RunnableConfig config = RunnableConfig.builder()
             .threadId(conversationId)
             .build();
@@ -125,10 +126,11 @@ public class UnifiedAgentService {
             toolService,
             knowledgeBaseSearchService,
             videoSummarySearchService,
+            agentScopeService,
             folderId,
             videoBvid
         );
-        ReactAgent agent = buildAgent(bridge, listActiveSkills(), folderId, videoBvid);
+        ReactAgent agent = buildAgent(bridge, listActiveSkills(), agentScopeService.describeScope("", folderId, videoBvid));
         RunnableConfig config = RunnableConfig.builder()
             .threadId(conversationId)
             .addHumanFeedback(buildFeedback(interruption, request.feedbacks()))
@@ -155,8 +157,7 @@ public class UnifiedAgentService {
     private ReactAgent buildAgent(
         UnifiedAgentToolBridge bridge,
         List<SkillListItemVO> activeSkills,
-        Long folderId,
-        String videoBvid
+        String scopeDescription
     ) {
         ChatClient chatClient = chatClientFactory.createQaClient();
         if (chatClient == null) {
@@ -178,7 +179,7 @@ public class UnifiedAgentService {
             .name("bilibrain-unified-agent")
             .description("BiliBrain unified agent")
             .chatClient(chatClient)
-            .instruction(UnifiedAgentPrompts.buildInstruction(activeSkills, folderId, videoBvid))
+            .instruction(UnifiedAgentPrompts.buildInstruction(activeSkills, scopeDescription))
             .methodTools(bridge)
             .hooks(hitlHookBuilder.build())
             .saver(memorySaver)

@@ -107,7 +107,7 @@ class ToolApprovalLifecycleTest extends AbstractMySqlIntegrationTest {
             "SELECT COUNT(*) FROM chat_messages WHERE conversation_id = ?",
             Integer.class,
             conversationId
-        )).isEqualTo(1);
+        )).isEqualTo(2);
 
         MvcResult resumeResult = mockMvc.perform(post("/api/skill-agent/resume/stream")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -132,6 +132,6 @@ class ToolApprovalLifecycleTest extends AbstractMySqlIntegrationTest {
             "SELECT COUNT(*) FROM chat_messages WHERE conversation_id = ?",
             Integer.class,
             conversationId
-        )).isEqualTo(2);
+        )).isEqualTo(3);
     }
 }

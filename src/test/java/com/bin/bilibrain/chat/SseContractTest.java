@@ -21,6 +21,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import java.time.LocalDateTime;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -79,7 +80,19 @@ class SseContractTest {
                     .createdAt(LocalDateTime.now())
                     .build()
             );
-        when(conversationService.appendMessage(anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(conversationService.appendAssistantMessage(
+            anyString(),
+            anyString(),
+            anyList(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyList(),
+            anyList(),
+            anyList(),
+            any()
+        ))
             .thenReturn(
                 ChatMessage.builder()
                     .id(2L)
@@ -120,5 +133,6 @@ class SseContractTest {
         assertThat(content).contains("\"conversation_id\":\"conv-sse\"");
         assertThat(content).contains("\"route\":\"video_summary\"");
         assertThat(content).contains("\"mode\":\"rag\"");
+        assertThat(content).contains("\"text\":");
     }
 }

@@ -43,8 +43,10 @@ class UnifiedAgentToolBridgeTest {
 
         assertThat(result).containsEntry("name", "java-rag");
         assertThat(bridge.skillEvents()).hasSize(1);
-        assertThat(bridge.toolEvents()).hasSize(1);
+        assertThat(bridge.toolEvents()).hasSize(2);
         assertThat(bridge.toolEvents().get(0).name()).isEqualTo("read_skill");
+        assertThat(bridge.toolEvents().get(0).phase()).isEqualTo("start");
+        assertThat(bridge.toolEvents().get(1).phase()).isEqualTo("finish");
     }
 
     @Test
@@ -68,6 +70,9 @@ class UnifiedAgentToolBridgeTest {
 
         assertThat(result).containsEntry("count", 1);
         assertThat(bridge.collectedSources()).hasSize(1);
+        assertThat(bridge.toolEvents()).hasSize(2);
         assertThat(bridge.toolEvents().get(0).name()).isEqualTo("search_knowledge_base");
+        assertThat(bridge.toolEvents().get(0).phase()).isEqualTo("start");
+        assertThat(bridge.toolEvents().get(1).phase()).isEqualTo("finish");
     }
 }

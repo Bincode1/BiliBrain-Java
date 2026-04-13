@@ -14,8 +14,16 @@ import com.bin.bilibrain.model.entity.ChatConversation;
 import com.bin.bilibrain.model.entity.ChatConversationContextStat;
 import com.bin.bilibrain.model.entity.ChatConversationMemory;
 import com.bin.bilibrain.model.entity.ChatMessage;
+import com.bin.bilibrain.model.vo.agent.AgentApprovalVO;
+import com.bin.bilibrain.model.vo.agent.AgentSkillEventVO;
+import com.bin.bilibrain.model.vo.agent.AgentToolEventVO;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
+import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
+import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JavaType;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
@@ -35,6 +43,7 @@ public class ConversationService {
     private final ChatConversationMemoryMapper chatConversationMemoryMapper;
     private final ChatConversationContextStatMapper chatConversationContextStatMapper;
     private final ConversationMemoryService conversationMemoryService;
+    private final ObjectMapper objectMapper;
 
     public List<ChatConversationVO> listConversations() {
         return chatConversationMapper.selectList(
@@ -119,6 +128,85 @@ public class ConversationService {
         String answerMode,
         String routeMode
     ) {
+        return appendMessageInternal(
+            conversationId,
+            role,
+            content,
+            sourcesJson,
+            answerMode,
+            routeMode,
+            "",
+            "",
+            "[]",
+            "[]",
+            "[]",
+            ""
+        );
+    }
+
+    public ChatMessage appendAssistantMessage(
+        String conversationId,
+        String content,
+        List<ChatSourceVO> sources,
+        String answerMode,
+        String routeMode,
+        String reasoningText,
+        String agentStatus,
+        List<AgentSkillEventVO> skillEvents,
+        List<AgentToolEventVO> toolEvents,
+        List<SkillListItemVO> activeSkills,
+        AgentApprovalVO approval
+    ) {
+        return appendMessageInternal(
+            conversationId,
+            "ASSISTANT",
+            content,
+            writeJson(sources, "[]"),
+            answerMode,
+            routeMode,
+            reasoningText,
+            agentStatus,
+            writeJson(skillEvents, "[]"),
+            writeJson(toolEvents, "[]"),
+            writeJson(activeSkills, "[]"),
+            approval == null ? "" : writeJson(approval, "")
+        );
+    }
+
+    public ChatMessageVO toMessageVO(ChatMessage message) {
+        return new ChatMessageVO(
+            message.getId(),
+            message.getConversationId(),
+            message.getRole(),
+            message.getContent(),
+            safeJson(message.getSourcesJson()),
+            readList(message.getSourcesJson(), ChatSourceVO.class),
+            blankToEmpty(message.getAnswerMode()),
+            blankToEmpty(message.getRouteMode()),
+            blankToEmpty(message.getReasoningText()),
+            blankToEmpty(message.getAgentStatus()),
+            readList(message.getSkillEventsJson(), AgentSkillEventVO.class),
+            readList(message.getToolEventsJson(), AgentToolEventVO.class),
+            readList(message.getActiveSkillsJson(), SkillListItemVO.class),
+            readObject(message.getApprovalJson(), AgentApprovalVO.class),
+            formatDateTime(message.getCreatedAt())
+        );
+    }
+
+    private ChatMessage appendMessageInternal(
+        String conversationId,
+        String role,
+        String content,
+        String sourcesJson,
+        String answerMode,
+        String routeMode,
+        String reasoningText,
+        String agentStatus,
+        String skillEventsJson,
+        String toolEventsJson,
+        String activeSkillsJson,
+        String approvalJson
+    ) {
         ChatConversation conversation = requireConversation(conversationId);
         LocalDateTime now = LocalDateTime.now();
         ChatMessage message = ChatMessage.builder()
@@ -128,6 +216,12 @@ public class ConversationService {
             .sourcesJson(safeJson(sourcesJson))
             .answerMode(blankToEmpty(answerMode))
             .routeMode(blankToEmpty(routeMode))
+            .reasoningText(blankToEmpty(reasoningText))
+            .agentStatus(blankToEmpty(agentStatus))
+            .skillEventsJson(safeArrayJson(skillEventsJson))
+            .toolEventsJson(safeArrayJson(toolEventsJson))
+            .activeSkillsJson(safeArrayJson(activeSkillsJson))
+            .approvalJson(blankToEmpty(approvalJson))
             .createdAt(now)
             .build();
         chatMessageMapper.insert(message);
@@ -212,19 +306,6 @@ public class ConversationService {
         );
     }
 
-    private ChatMessageVO toMessageVO(ChatMessage message) {
-        return new ChatMessageVO(
-            message.getId(),
-            message.getConversationId(),
-            message.getRole(),
-            message.getContent(),
-            safeJson(message.getSourcesJson()),
-            blankToEmpty(message.getAnswerMode()),
-            blankToEmpty(message.getRouteMode()),
-            formatDateTime(message.getCreatedAt())
-        );
-    }
-
     private String defaultTitle(String title) {
         return StringUtils.hasText(title) ? title.trim() : DEFAULT_TITLE;
     }
@@ -260,6 +341,10 @@ public class ConversationService {
         return StringUtils.hasText(value) ? value : "[]";
     }
 
+    private String safeArrayJson(String value) {
+        return StringUtils.hasText(value) ? value : "[]";
+    }
+
     private String blankToEmpty(String value) {
         return StringUtils.hasText(value) ? value.trim() : "";
     }
@@ -274,5 +359,36 @@ public class ConversationService {
 
     private String formatDateTime(LocalDateTime value) {
         return value == null ? "" : value.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    private String writeJson(Object value, String fallback) {
+        try {
+            return objectMapper.writeValueAsString(value);
+        } catch (JsonProcessingException exception) {
+            return fallback;
+        }
+    }
+
+    private <T> List<T> readList(String value, Class<T> itemType) {
+        if (!StringUtils.hasText(value)) {
+            return List.of();
+        }
+        JavaType javaType = objectMapper.getTypeFactory().constructCollectionType(List.class, itemType);
+        try {
+            return objectMapper.readValue(value, javaType);
+        } catch (JsonProcessingException exception) {
+            return List.of();
+        }
+    }
+
+    private <T> T readObject(String value, Class<T> targetType) {
+        if (!StringUtils.hasText(value)) {
+            return null;
+        }
+        try {
+            return objectMapper.readValue(value, targetType);
+        } catch (JsonProcessingException exception) {
+            return null;
+        }
     }
 }

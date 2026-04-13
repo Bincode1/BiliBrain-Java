@@ -28,6 +28,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.when;
@@ -79,7 +80,19 @@ class UnifiedAgentStreamTest {
                 .sourcesJson("[]")
                 .createdAt(LocalDateTime.now())
                 .build());
-        when(conversationService.appendMessage(anyString(), anyString(), anyString(), anyString(), anyString(), anyString()))
+        when(conversationService.appendAssistantMessage(
+            anyString(),
+            anyString(),
+            anyList(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyList(),
+            anyList(),
+            anyList(),
+            any()
+        ))
             .thenReturn(ChatMessage.builder()
                 .id(2L)
                 .conversationId("conv-agent")
@@ -144,6 +157,30 @@ class UnifiedAgentStreamTest {
                 .sourcesJson("[]")
                 .createdAt(LocalDateTime.now())
                 .build());
+        when(conversationService.appendAssistantMessage(
+            anyString(),
+            anyString(),
+            anyList(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyString(),
+            anyList(),
+            anyList(),
+            anyList(),
+            any()
+        ))
+            .thenReturn(ChatMessage.builder()
+                .id(4L)
+                .conversationId("conv-approval")
+                .role("ASSISTANT")
+                .content("工具调用等待人工确认")
+                .sourcesJson("[]")
+                .answerMode("agent")
+                .routeMode("agent")
+                .agentStatus("工具调用等待人工确认")
+                .createdAt(LocalDateTime.now())
+                .build());
 
         MvcResult mvcResult = mockMvc.perform(post("/api/skill-agent/stream")
                 .contentType(MediaType.APPLICATION_JSON)
@@ -160,6 +197,7 @@ class UnifiedAgentStreamTest {
         String content = asyncResult.getResponse().getContentAsString();
         assertThat(content).contains("event:approval");
         assertThat(content).contains("event:status");
+        assertThat(content).contains("event:answer_normalized");
         assertThat(content).contains("\"tool_name\":\"list_workspaces\"");
     }
 }

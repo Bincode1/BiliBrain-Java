@@ -6,8 +6,6 @@ import com.bin.bilibrain.model.entity.ChatMessage;
 import com.bin.bilibrain.model.vo.chat.AskResponse;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
@@ -23,7 +21,6 @@ import java.util.Map;
 public class SseEventService {
     private final ConversationService conversationService;
     private final ChatAnswerService chatAnswerService;
-    private final ObjectMapper objectMapper;
 
     public AskResponse ask(AskRequest request) {
         PreparedConversation preparedConversation = prepareConversation(request);
@@ -34,13 +31,18 @@ public class SseEventService {
             preparedConversation.conversation().videoBvid(),
             request.message()
         );
-        ChatMessage assistantMessage = conversationService.appendMessage(
+        ChatMessage assistantMessage = conversationService.appendAssistantMessage(
             preparedConversation.conversation().id(),
-            "ASSISTANT",
             result.answer(),
-            writeSourcesJson(result),
+            result.sources(),
             result.mode(),
-            result.route()
+            result.route(),
+            result.reasoning(),
+            "",
+            List.of(),
+            List.of(),
+            List.of(),
+            null
         );
         return new AskResponse(
             preparedConversation.conversation().id(),
@@ -63,12 +65,15 @@ public class SseEventService {
 
             send(emitter, "conversation", Map.of(
                 "created", created,
-                "conversation", conversation
+                "conversation", conversation,
+                "conversation_id", conversation.id()
             ));
             conversationService.appendMessage(conversation.id(), "USER", request.message(), "[]");
+            String startedMessage = "正在分析检索路由并生成回答";
             send(emitter, "status", Map.of(
                 "stage", "started",
-                "message", "正在分析检索路由并生成回答"
+                "message", startedMessage,
+                "delta", startedMessage
             ));
 
             ChatAnswerResult result = chatAnswerService.answer(
@@ -77,9 +82,9 @@ public class SseEventService {
                 conversation.videoBvid(),
                 request.message()
             );
-            send(emitter, "reasoning", Map.of("content", result.reasoning()));
-            send(emitter, "route", Map.of("route", result.route()));
-            send(emitter, "mode", Map.of("mode", result.mode()));
+            send(emitter, "reasoning", Map.of("content", result.reasoning(), "delta", result.reasoning()));
+            send(emitter, "route", Map.of("route", result.route(), "route_mode", result.route()));
+            send(emitter, "mode", Map.of("mode", result.mode(), "answer_mode", result.mode()));
             send(emitter, "sources", Map.of("sources", result.sources()));
 
             for (String chunk : splitChunks(result.answer())) {
@@ -87,27 +92,39 @@ public class SseEventService {
             }
 
             ChatMessageVO assistantMessage = toMessageVO(
-                conversationService.appendMessage(
+                conversationService.appendAssistantMessage(
                     conversation.id(),
-                    "ASSISTANT",
                     result.answer(),
-                    writeSourcesJson(result),
+                    result.sources(),
                     result.mode(),
-                    result.route()
+                    result.route(),
+                    result.reasoning(),
+                    "",
+                    List.of(),
+                    List.of(),
+                    List.of(),
+                    null
                 )
             );
             send(emitter, "answer_normalized", Map.of(
                 "content", result.answer(),
+                "text", result.answer(),
                 "route", result.route(),
+                "route_mode", result.route(),
                 "mode", result.mode(),
+                "answer_mode", result.mode(),
                 "sources", result.sources(),
-                "message", assistantMessage
+                "message", assistantMessage,
+                "conversation_id", conversation.id()
             ));
             send(emitter, "done", Map.of("conversation_id", conversation.id()));
             emitter.complete();
         } catch (Exception exception) {
             try {
-                send(emitter, "error", Map.of("message", exception.getMessage()));
+                String message = exception == null || exception.getMessage() == null
+                    ? "流式回答失败。"
+                    : exception.getMessage();
+                send(emitter, "error", Map.of("message", message));
             } catch (IOException ignored) {
             }
             emitter.complete();
@@ -145,14 +162,6 @@ public class SseEventService {
         return chunks.isEmpty() ? List.of(answer) : chunks;
     }
 
-    private String buildTitleHint(String message) {
-        String normalized = message == null ? "" : message.trim().replaceAll("\\s+", " ");
-        if (normalized.isBlank()) {
-            return "新对话";
-        }
-        return normalized.length() <= 24 ? normalized : normalized.substring(0, 24);
-    }
-
     private ChatMessageVO toMessageVO(ChatMessage message) {
         return new ChatMessageVO(
             message.getId(),
@@ -166,12 +175,12 @@ public class SseEventService {
         );
     }
 
-    private String writeSourcesJson(ChatAnswerResult result) {
-        try {
-            return objectMapper.writeValueAsString(result.sources());
-        } catch (JsonProcessingException exception) {
-            throw new IllegalStateException("序列化聊天 sources 失败。", exception);
+    private String buildTitleHint(String message) {
+        String normalized = message == null ? "" : message.trim().replaceAll("\\s+", " ");
+        if (normalized.isBlank()) {
+            return "新对话";
         }
+        return normalized.length() <= 24 ? normalized : normalized.substring(0, 24);
     }
 
     private record PreparedConversation(boolean created, ChatConversationVO conversation) {

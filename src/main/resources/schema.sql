@@ -100,9 +100,22 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     sources_json LONGTEXT,
     answer_mode VARCHAR(32),
     route_mode VARCHAR(32),
+    reasoning_text LONGTEXT,
+    agent_status VARCHAR(255),
+    skill_events_json LONGTEXT,
+    tool_events_json LONGTEXT,
+    active_skills_json LONGTEXT,
+    approval_json LONGTEXT,
     created_at TIMESTAMP NOT NULL,
     INDEX idx_chat_messages_conversation_id_created_at (conversation_id, created_at)
 );
+
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS reasoning_text LONGTEXT;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS agent_status VARCHAR(255);
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS skill_events_json LONGTEXT;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS tool_events_json LONGTEXT;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS active_skills_json LONGTEXT;
+ALTER TABLE chat_messages ADD COLUMN IF NOT EXISTS approval_json LONGTEXT;
 
 CREATE TABLE IF NOT EXISTS chat_conversation_memory (
     conversation_id VARCHAR(64) PRIMARY KEY,

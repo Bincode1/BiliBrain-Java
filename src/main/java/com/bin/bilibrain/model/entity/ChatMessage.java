@@ -25,6 +25,12 @@ public class ChatMessage {
     private String sourcesJson;
     private String answerMode;
     private String routeMode;
+    private String reasoningText;
+    private String agentStatus;
+    private String skillEventsJson;
+    private String toolEventsJson;
+    private String activeSkillsJson;
+    private String approvalJson;
 
     private LocalDateTime createdAt;
 }

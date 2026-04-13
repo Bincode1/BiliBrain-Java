@@ -43,43 +43,87 @@ public class UnifiedAgentToolBridge {
     public Map<String, Object> readSkill(
         @ToolParam(description = "skill 的名称") String skillName
     ) {
-        ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_READ_SKILL, null, skillName));
-        skillEvents.add(new AgentSkillEventVO(
-            String.valueOf(result.result().getOrDefault("name", skillName)),
-            String.valueOf(result.result().getOrDefault("description", ""))
-        ));
-        toolEvents.add(new AgentToolEventVO(ToolService.TOOL_READ_SKILL, "已读取 skill：" + skillName));
-        return result.result();
+        Map<String, Object> summary = Map.of("skill_name", skillName);
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_READ_SKILL, summary));
+        try {
+            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_READ_SKILL, null, skillName));
+            skillEvents.add(new AgentSkillEventVO(
+                String.valueOf(result.result().getOrDefault("name", skillName)),
+                String.valueOf(result.result().getOrDefault("description", ""))
+            ));
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_READ_SKILL,
+                summary,
+                Map.of(
+                    "name", String.valueOf(result.result().getOrDefault("name", skillName)),
+                    "active", result.result().getOrDefault("active", false)
+                )
+            ));
+            return result.result();
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_READ_SKILL, summary, exception.getMessage()));
+            throw exception;
+        }
     }
 
     @Tool(name = ToolService.TOOL_LIST_WORKSPACES, description = "列出当前可用的工作区")
     public Map<String, Object> listWorkspaces() {
-        ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_LIST_WORKSPACES, null, null));
-        toolEvents.add(new AgentToolEventVO(
-            ToolService.TOOL_LIST_WORKSPACES,
-            "已读取工作区列表，共 %s 个".formatted(result.result().getOrDefault("count", 0))
-        ));
-        return result.result();
+        Map<String, Object> summary = Map.of("scope", "registered_workspaces");
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_LIST_WORKSPACES, summary));
+        try {
+            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_LIST_WORKSPACES, null, null));
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_LIST_WORKSPACES,
+                summary,
+                Map.of("count", result.result().getOrDefault("count", 0))
+            ));
+            return result.result();
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_LIST_WORKSPACES, summary, exception.getMessage()));
+            throw exception;
+        }
     }
 
     @Tool(name = "search_knowledge_base", description = "搜索 transcript chunk 级知识库片段")
     public Map<String, Object> searchKnowledgeBase(
         @ToolParam(description = "用户的当前问题") String query
     ) {
-        List<ChatSourceVO> sources = knowledgeBaseSearchService.searchKnowledgeBase(query, folderId, videoBvid);
-        collectedSources.addAll(sources);
-        toolEvents.add(new AgentToolEventVO("search_knowledge_base", "命中 %s 条 chunk 片段".formatted(sources.size())));
-        return Map.of("count", sources.size(), "sources", sources);
+        Map<String, Object> summary = Map.of("query", query);
+        toolEvents.add(AgentToolEventVO.start("search_knowledge_base", summary));
+        try {
+            List<ChatSourceVO> sources = knowledgeBaseSearchService.searchKnowledgeBase(query, folderId, videoBvid);
+            collectedSources.addAll(sources);
+            toolEvents.add(AgentToolEventVO.finish(
+                "search_knowledge_base",
+                summary,
+                Map.of("count", sources.size())
+            ));
+            return Map.of("count", sources.size(), "sources", sources);
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed("search_knowledge_base", summary, exception.getMessage()));
+            throw exception;
+        }
     }
 
     @Tool(name = "search_video_summaries", description = "搜索视频摘要级上下文")
     public Map<String, Object> searchVideoSummaries(
         @ToolParam(description = "用户的当前问题") String query
     ) {
-        List<ChatSourceVO> sources = videoSummarySearchService.searchVideoSummaries(query, folderId, videoBvid);
-        collectedSources.addAll(sources);
-        toolEvents.add(new AgentToolEventVO("search_video_summaries", "命中 %s 条摘要结果".formatted(sources.size())));
-        return Map.of("count", sources.size(), "sources", sources);
+        Map<String, Object> summary = Map.of("query", query);
+        toolEvents.add(AgentToolEventVO.start("search_video_summaries", summary));
+        try {
+            List<ChatSourceVO> sources = videoSummarySearchService.searchVideoSummaries(query, folderId, videoBvid);
+            collectedSources.addAll(sources);
+            toolEvents.add(AgentToolEventVO.finish(
+                "search_video_summaries",
+                summary,
+                Map.of("count", sources.size())
+            ));
+            return Map.of("count", sources.size(), "sources", sources);
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed("search_video_summaries", summary, exception.getMessage()));
+            throw exception;
+        }
     }
 
     public List<AgentToolEventVO> toolEvents() {

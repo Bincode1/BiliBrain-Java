@@ -112,6 +112,7 @@ app:
     direct-max-characters: ${SUMMARY_DIRECT_MAX_CHARACTERS:4000}
     window-max-characters: ${SUMMARY_WINDOW_MAX_CHARACTERS:3000}
     window-overlap-characters: ${SUMMARY_WINDOW_OVERLAP_CHARACTERS:300}
+    window-concurrency: ${SUMMARY_WINDOW_CONCURRENCY:4}
     temperature: ${SUMMARY_TEMPERATURE:0.2}
   chat:
     compaction-token-threshold: ${CHAT_COMPACTION_TOKEN_THRESHOLD:1200}

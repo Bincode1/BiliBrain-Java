@@ -11,6 +11,8 @@ import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.model.entity.VideoSummary;
 import com.bin.bilibrain.model.vo.summary.VideoSummaryVO;
 import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 
@@ -20,6 +22,8 @@ import java.time.format.DateTimeFormatter;
 @Service
 @RequiredArgsConstructor
 public class SummaryService {
+    private static final Logger log = LoggerFactory.getLogger(SummaryService.class);
+
     private final VideoMapper videoMapper;
     private final TranscriptMapper transcriptMapper;
     private final VideoSummaryMapper videoSummaryMapper;
@@ -34,7 +38,7 @@ public class SummaryService {
     }
 
     public VideoSummaryVO generateSummary(String bvid) {
-        requireVideo(bvid);
+        Video video = requireVideo(bvid);
         Transcript transcript = transcriptMapper.findByBvid(bvid);
         if (transcript == null || transcript.getTranscriptText() == null || transcript.getTranscriptText().isBlank()) {
             throw new BusinessException(
@@ -51,9 +55,41 @@ public class SummaryService {
             );
         }
 
-        SummaryGraphRunner.SummaryRunResult result = summaryGraphRunner.run(bvid);
-        Transcript latestTranscript = transcriptMapper.findByBvid(bvid);
-        return toVO(requireVideo(bvid), latestTranscript, result.summary(), result.generated());
+        long startedAt = System.nanoTime();
+        try {
+            log.info(
+                "summary generation started for bvid={} title={} transcriptChars={}",
+                video.getBvid(),
+                video.getTitle(),
+                transcript.getTranscriptText().length()
+            );
+            SummaryGraphRunner.SummaryRunResult result = summaryGraphRunner.run(bvid);
+            Transcript latestTranscript = transcriptMapper.findByBvid(bvid);
+            log.info(
+                "summary generation finished for bvid={} title={} generated={} costMs={}",
+                video.getBvid(),
+                video.getTitle(),
+                result.generated(),
+                (System.nanoTime() - startedAt) / 1_000_000L
+            );
+            return toVO(video, latestTranscript, result.summary(), result.generated());
+        } catch (BusinessException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            log.warn(
+                "summary generation failed for bvid={} title={} costMs={} reason={}",
+                video.getBvid(),
+                video.getTitle(),
+                (System.nanoTime() - startedAt) / 1_000_000L,
+                exception.getMessage(),
+                exception
+            );
+            throw new BusinessException(
+                ErrorCode.OPERATION_ERROR,
+                "摘要生成失败：" + safeMessage(exception),
+                HttpStatus.BAD_GATEWAY
+            );
+        }
     }
 
     private Video requireVideo(String bvid) {
@@ -85,5 +121,11 @@ public class SummaryService {
             return "";
         }
         return value.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME);
+    }
+
+    private String safeMessage(Exception exception) {
+        return exception == null || exception.getMessage() == null || exception.getMessage().isBlank()
+            ? "模型未返回可用结果，请稍后重试。"
+            : exception.getMessage();
     }
 }

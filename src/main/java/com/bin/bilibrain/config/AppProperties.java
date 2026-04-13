@@ -157,6 +157,10 @@ public class AppProperties {
         @Min(0)
         private int windowOverlapCharacters = 300;
 
+        @Min(1)
+        @Max(8)
+        private int windowConcurrency = 4;
+
         private double temperature = 0.2;
     }
 

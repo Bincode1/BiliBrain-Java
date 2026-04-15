@@ -30,6 +30,46 @@ public class ToolPolicyService {
             false,
             false,
             true
+        ),
+        ToolService.TOOL_LIST_DIRECTORY,
+        new ToolPolicy(
+            ToolService.TOOL_LIST_DIRECTORY,
+            "列出当前 workspace 内目录内容。",
+            false,
+            true,
+            true
+        ),
+        ToolService.TOOL_VIEW_TEXT_FILE,
+        new ToolPolicy(
+            ToolService.TOOL_VIEW_TEXT_FILE,
+            "读取当前 workspace 内文本文件内容。",
+            false,
+            true,
+            true
+        ),
+        ToolService.TOOL_WRITE_TEXT_FILE,
+        new ToolPolicy(
+            ToolService.TOOL_WRITE_TEXT_FILE,
+            "在当前 workspace 内创建或覆盖文本文件。",
+            false,
+            true,
+            true
+        ),
+        ToolService.TOOL_INSERT_TEXT_FILE,
+        new ToolPolicy(
+            ToolService.TOOL_INSERT_TEXT_FILE,
+            "在当前 workspace 内按行插入文本内容。",
+            false,
+            true,
+            true
+        ),
+        ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+        new ToolPolicy(
+            ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+            "将整理好的学习内容发布到本地知识库或 Obsidian vault 目录。",
+            true,
+            false,
+            true
         )
     );
 

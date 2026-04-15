@@ -35,6 +35,17 @@ public class WorkspaceService {
             .toList();
     }
 
+    public Path requireWorkspaceRoot(Long workspaceId) {
+        if (workspaceId == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "workspace_id 不能为空", HttpStatus.BAD_REQUEST);
+        }
+        ToolWorkspace workspace = toolWorkspaceMapper.selectById(workspaceId);
+        if (workspace == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "找不到这个 workspace。", HttpStatus.NOT_FOUND);
+        }
+        return Path.of(workspace.getWorkspacePath()).toAbsolutePath().normalize();
+    }
+
     public ToolWorkspaceVO createWorkspace(WorkspaceCreateRequest request) {
         String name = normalizeName(request.name());
         String workspaceKey = allocateWorkspaceKey(name);

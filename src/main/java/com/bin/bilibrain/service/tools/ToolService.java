@@ -18,6 +18,7 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 
@@ -26,6 +27,11 @@ import java.util.Map;
 public class ToolService {
     public static final String TOOL_READ_SKILL = "read_skill";
     public static final String TOOL_LIST_WORKSPACES = "list_workspaces";
+    public static final String TOOL_LIST_DIRECTORY = "list_directory";
+    public static final String TOOL_VIEW_TEXT_FILE = "view_text_file";
+    public static final String TOOL_WRITE_TEXT_FILE = "write_text_file";
+    public static final String TOOL_INSERT_TEXT_FILE = "insert_text_file";
+    public static final String TOOL_PUBLISH_TO_VAULT_FS = "publish_to_vault_fs";
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_FAILED = "FAILED";
 
@@ -33,6 +39,8 @@ public class ToolService {
     private final ToolPolicyService toolPolicyService;
     private final SkillRegistryService skillRegistryService;
     private final WorkspaceService workspaceService;
+    private final AgentScopeFileToolAdapter agentScopeFileToolAdapter;
+    private final VaultPublishingService vaultPublishingService;
     private final ObjectMapper objectMapper;
 
     public List<ToolDefinitionVO> listTools() {
@@ -63,6 +71,35 @@ public class ToolService {
         return switch (toolName) {
             case TOOL_READ_SKILL -> readSkill(request.skillName());
             case TOOL_LIST_WORKSPACES -> listWorkspacesResult();
+            case TOOL_LIST_DIRECTORY -> agentScopeFileToolAdapter.listDirectory(
+                request.workspaceId(),
+                stringArg(request, "path", ".")
+            );
+            case TOOL_VIEW_TEXT_FILE -> agentScopeFileToolAdapter.viewTextFile(
+                request.workspaceId(),
+                requiredStringArg(request, "path"),
+                stringArg(request, "range", null)
+            );
+            case TOOL_WRITE_TEXT_FILE -> agentScopeFileToolAdapter.writeTextFile(
+                request.workspaceId(),
+                requiredStringArg(request, "path"),
+                requiredStringArg(request, "content"),
+                booleanArg(request, "overwrite", false)
+            );
+            case TOOL_INSERT_TEXT_FILE -> agentScopeFileToolAdapter.insertTextFile(
+                request.workspaceId(),
+                requiredStringArg(request, "path"),
+                requiredStringArg(request, "content"),
+                requiredIntArg(request, "line")
+            );
+            case TOOL_PUBLISH_TO_VAULT_FS -> vaultPublishingService.publishToVaultFs(
+                requiredStringArg(request, "kind"),
+                requiredStringArg(request, "title"),
+                requiredStringArg(request, "content_markdown"),
+                requiredStringArg(request, "scope_type"),
+                requiredStringArg(request, "scope_id"),
+                listArg(request, "source_refs")
+            );
             default -> throw new BusinessException(
                 ErrorCode.PARAMS_ERROR,
                 "暂不支持这个工具调用。",
@@ -90,6 +127,64 @@ public class ToolService {
             "count", workspaces.size(),
             "workspaces", workspaces
         );
+    }
+
+    private String requiredStringArg(ToolCallRequest request, String key) {
+        String value = stringArg(request, key, null);
+        if (!StringUtils.hasText(value)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, key + " 不能为空", HttpStatus.BAD_REQUEST);
+        }
+        return value.trim();
+    }
+
+    private String stringArg(ToolCallRequest request, String key, String defaultValue) {
+        Object value = arguments(request).get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        String normalized = String.valueOf(value).trim();
+        return normalized.isEmpty() ? defaultValue : normalized;
+    }
+
+    private boolean booleanArg(ToolCallRequest request, String key, boolean defaultValue) {
+        Object value = arguments(request).get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        if (value instanceof Boolean bool) {
+            return bool;
+        }
+        return Boolean.parseBoolean(String.valueOf(value));
+    }
+
+    private Integer requiredIntArg(ToolCallRequest request, String key) {
+        Object value = arguments(request).get(key);
+        if (value == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, key + " 不能为空", HttpStatus.BAD_REQUEST);
+        }
+        if (value instanceof Number number) {
+            return number.intValue();
+        }
+        try {
+            return Integer.parseInt(String.valueOf(value).trim());
+        } catch (NumberFormatException exception) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, key + " 必须是整数", HttpStatus.BAD_REQUEST);
+        }
+    }
+
+    private List<?> listArg(ToolCallRequest request, String key) {
+        Object value = arguments(request).get(key);
+        if (value == null) {
+            return List.of();
+        }
+        if (value instanceof List<?> list) {
+            return list;
+        }
+        return Collections.singletonList(value);
+    }
+
+    private Map<String, Object> arguments(ToolCallRequest request) {
+        return request.arguments() == null ? Map.of() : request.arguments();
     }
 
     private ToolCall persistCall(ToolCallRequest request, String status, Map<String, Object> result, LocalDateTime now) {

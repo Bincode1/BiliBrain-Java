@@ -5,6 +5,8 @@ import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
 
+import java.util.Map;
+
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record ToolCallRequest(
     @NotBlank(message = "tool_name 不能为空")
@@ -12,6 +14,7 @@ public record ToolCallRequest(
     String toolName,
     Long workspaceId,
     @Size(max = 64, message = "skill_name 过长")
-    String skillName
+    String skillName,
+    Map<String, Object> arguments
 ) {
 }

@@ -34,28 +34,6 @@ spring:
         transcription:
           options:
             model: ${DASHSCOPE_TRANSCRIPTION_MODEL:paraformer-v2}
-    vectorstore:
-      milvus:
-        client:
-          host: ${MILVUS_HOST:localhost}
-          port: ${MILVUS_PORT:19530}
-          uri: ${MILVUS_URI:}
-          token: ${MILVUS_TOKEN:}
-          username: ${MILVUS_USERNAME:}
-          password: ${MILVUS_PASSWORD:}
-          secure: ${MILVUS_SECURE:false}
-          connect-timeout-ms: ${MILVUS_CONNECT_TIMEOUT_MS:10000}
-          keep-alive-time-ms: ${MILVUS_KEEP_ALIVE_TIME_MS:55000}
-          keep-alive-timeout-ms: ${MILVUS_KEEP_ALIVE_TIMEOUT_MS:20000}
-          idle-timeout-ms: ${MILVUS_IDLE_TIMEOUT_MS:0}
-          rpc-deadline-ms: ${MILVUS_RPC_DEADLINE_MS:0}
-        database-name: ${MILVUS_DATABASE:default}
-        collection-name: ${MILVUS_COLLECTION:bilibrain_transcript_chunks}
-        embedding-dimension: ${MILVUS_EMBEDDING_DIMENSION:1024}
-        index-type: ${MILVUS_INDEX_TYPE:IVF_FLAT}
-        metric-type: ${MILVUS_METRIC_TYPE:COSINE}
-        index-parameters: ${MILVUS_INDEX_PARAMETERS:{"nlist":1024}}
-        initialize-schema: ${MILVUS_INITIALIZE_SCHEMA:true}
   datasource:
     url: jdbc:mysql://${MYSQL_HOST:localhost}:${MYSQL_PORT:3306}/${MYSQL_DATABASE:bilibrain}?useSSL=false&allowPublicKeyRetrieval=true&serverTimezone=Asia/Shanghai
     username: ${MYSQL_USERNAME:root}
@@ -113,6 +91,33 @@ app:
     chunk-size: ${RETRIEVAL_CHUNK_SIZE:500}
     chunk-overlap: ${RETRIEVAL_CHUNK_OVERLAP:100}
     search-top-k: ${RETRIEVAL_SEARCH_TOP_K:5}
+    dense-top-k: ${RETRIEVAL_DENSE_TOP_K:20}
+    sparse-top-k: ${RETRIEVAL_SPARSE_TOP_K:20}
+    dense-similarity-threshold: ${RETRIEVAL_DENSE_SIMILARITY_THRESHOLD:0.7}
+    search-mode: ${RETRIEVAL_SEARCH_MODE:hybrid}
+    dense-nprobe: ${RETRIEVAL_DENSE_NPROBE:16}
+    embedding-dimension: ${MILVUS_EMBEDDING_DIMENSION:1024}
+    milvus:
+      host: ${MILVUS_HOST:localhost}
+      port: ${MILVUS_PORT:19530}
+      uri: ${MILVUS_URI:}
+      token: ${MILVUS_TOKEN:}
+      username: ${MILVUS_USERNAME:}
+      password: ${MILVUS_PASSWORD:}
+      secure: ${MILVUS_SECURE:false}
+      connect-timeout-ms: ${MILVUS_CONNECT_TIMEOUT_MS:10000}
+      keep-alive-time-ms: ${MILVUS_KEEP_ALIVE_TIME_MS:55000}
+      keep-alive-timeout-ms: ${MILVUS_KEEP_ALIVE_TIMEOUT_MS:20000}
+      idle-timeout-ms: ${MILVUS_IDLE_TIMEOUT_MS:0}
+      rpc-deadline-ms: ${MILVUS_RPC_DEADLINE_MS:0}
+      database: ${MILVUS_DATABASE:default}
+      collection: ${MILVUS_COLLECTION:bilibrain_transcript_chunks}
+      dense-index-type: ${MILVUS_INDEX_TYPE:IVF_FLAT}
+      dense-metric-type: ${MILVUS_METRIC_TYPE:COSINE}
+      dense-index-nlist: ${MILVUS_DENSE_INDEX_NLIST:1024}
+      sparse-index-type: ${MILVUS_SPARSE_INDEX_TYPE:SPARSE_INVERTED_INDEX}
+      hybrid-ranker: ${MILVUS_HYBRID_RANKER:rrf}
+      hybrid-rrf-k: ${MILVUS_HYBRID_RRF_K:60}
   summary:
     direct-max-characters: ${SUMMARY_DIRECT_MAX_CHARACTERS:4000}
     window-max-characters: ${SUMMARY_WINDOW_MAX_CHARACTERS:3000}
@@ -131,6 +136,11 @@ app:
     upload-dir: ${UPLOAD_DIR:./uploads}
     tools-workspace-root: ${TOOLS_WORKSPACE_ROOT:./data/tool_workspaces}
     skills-root: ${SKILLS_ROOT:./skills}
+  publishing:
+    vault-root: ${VAULT_ROOT:./data/knowledge_vault}
+    video-notes-dir: ${VIDEO_NOTES_DIR:学习笔记/视频}
+    folder-guides-dir: ${FOLDER_GUIDES_DIR:学习笔记/收藏夹}
+    review-plans-dir: ${REVIEW_PLANS_DIR:学习笔记/复习计划}
 
 mybatis-plus:
   mapper-locations: classpath*:/mapper/**/*.xml

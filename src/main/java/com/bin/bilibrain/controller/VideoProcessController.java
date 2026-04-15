@@ -31,6 +31,12 @@ public class VideoProcessController {
         return ResultUtils.success(pipelineStatusService.getStatus(bvid).withStarted(started));
     }
 
+    @PostMapping("/{bvid}/reindex")
+    public BaseResponse<ProcessStatusResponse> reindexVideo(@PathVariable String bvid) {
+        boolean started = ingestionQueueService.reindexVideoFromChunk(bvid);
+        return ResultUtils.success(pipelineStatusService.getStatus(bvid).withStarted(started));
+    }
+
     @PostMapping("/{bvid}/reset")
     public BaseResponse<ProcessStatusResponse> resetVideo(@PathVariable String bvid) {
         boolean started = ingestionQueueService.resetVideoProcessing(bvid);

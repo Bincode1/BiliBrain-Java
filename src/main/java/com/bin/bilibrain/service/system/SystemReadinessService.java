@@ -3,7 +3,7 @@ package com.bin.bilibrain.service.system;
 import com.bin.bilibrain.config.AppProperties;
 import com.bin.bilibrain.model.vo.system.ReadinessCheckVO;
 import com.bin.bilibrain.model.vo.system.SystemReadinessVO;
-import io.milvus.client.MilvusServiceClient;
+import io.milvus.v2.client.MilvusClientV2;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.audio.transcription.TranscriptionModel;
 import org.springframework.ai.chat.model.ChatModel;
@@ -48,7 +48,7 @@ public class SystemReadinessService {
     private final JdbcTemplate jdbcTemplate;
     private final AppProperties appProperties;
     private final Environment environment;
-    private final ObjectProvider<MilvusServiceClient> milvusServiceClientProvider;
+    private final ObjectProvider<MilvusClientV2> milvusClientProvider;
     private final ObjectProvider<ChatModel> chatModelProvider;
     private final ObjectProvider<EmbeddingModel> embeddingModelProvider;
     private final ObjectProvider<TranscriptionModel> transcriptionModelProvider;
@@ -91,19 +91,19 @@ public class SystemReadinessService {
         if (!appProperties.getRetrieval().isEnabled()) {
             return new ReadinessCheckVO("milvus", "disabled", "向量检索未启用。");
         }
-        MilvusServiceClient milvusServiceClient = milvusServiceClientProvider.getIfAvailable();
-        if (milvusServiceClient == null) {
+        MilvusClientV2 milvusClient = milvusClientProvider.getIfAvailable();
+        if (milvusClient == null) {
             return new ReadinessCheckVO("milvus", "failed", "Milvus 客户端 Bean 不存在，请检查向量库配置。");
         }
         try {
-            boolean ready = milvusServiceClient.clientIsReady();
+            boolean ready = milvusClient.clientIsReady();
             if (!ready) {
                 return new ReadinessCheckVO("milvus", "failed", "Milvus 客户端已创建，但当前未就绪。");
             }
             return new ReadinessCheckVO(
                 "milvus",
                 "ready",
-                "Milvus 已可连通，目标库为 " + environment.getProperty("spring.ai.vectorstore.milvus.database-name", "default") + "。"
+                "Milvus 已可连通，目标库为 " + appProperties.getRetrieval().getMilvus().getDatabase() + "。"
             );
         } catch (Exception exception) {
             return new ReadinessCheckVO("milvus", "failed", "Milvus 连接失败: " + exception.getMessage());

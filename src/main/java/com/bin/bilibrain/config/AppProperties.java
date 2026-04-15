@@ -1,6 +1,8 @@
 package com.bin.bilibrain.config;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.DecimalMax;
+import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotBlank;
@@ -39,6 +41,9 @@ public class AppProperties {
 
     @Valid
     private Chat chat = new Chat();
+
+    @Valid
+    private Publishing publishing = new Publishing();
 
     @Data
     public static class Cors {
@@ -154,6 +159,54 @@ public class AppProperties {
         @Min(1)
         @Max(20)
         private int searchTopK = 5;
+
+        @Min(1)
+        @Max(100)
+        private int denseTopK = 20;
+
+        @Min(1)
+        @Max(100)
+        private int sparseTopK = 20;
+
+        @DecimalMin("0.0")
+        @DecimalMax("1.0")
+        private double denseSimilarityThreshold = 0.7;
+
+        @NotBlank
+        private String searchMode = "hybrid";
+
+        @Min(1)
+        private int denseNprobe = 16;
+
+        @Min(1)
+        private int embeddingDimension = 1024;
+
+        @Valid
+        private Milvus milvus = new Milvus();
+    }
+
+    @Data
+    public static class Milvus {
+        private String host = "localhost";
+        private int port = 19530;
+        private String uri = "";
+        private String token = "";
+        private String username = "";
+        private String password = "";
+        private boolean secure = false;
+        private long connectTimeoutMs = 10000;
+        private long keepAliveTimeMs = 55000;
+        private long keepAliveTimeoutMs = 20000;
+        private long idleTimeoutMs = 0;
+        private long rpcDeadlineMs = 0;
+        private String database = "default";
+        private String collection = "bilibrain_transcript_chunks";
+        private String denseIndexType = "IVF_FLAT";
+        private String denseMetricType = "COSINE";
+        private int denseIndexNlist = 1024;
+        private String sparseIndexType = "SPARSE_INVERTED_INDEX";
+        private String hybridRanker = "rrf";
+        private int hybridRrfK = 60;
     }
 
     @Data
@@ -188,5 +241,13 @@ public class AppProperties {
 
         @Min(20)
         private int memoryLineMaxCharacters = 180;
+    }
+
+    @Data
+    public static class Publishing {
+        private Path vaultRoot = Path.of("./data/knowledge_vault");
+        private String videoNotesDir = "学习笔记/视频";
+        private String folderGuidesDir = "学习笔记/收藏夹";
+        private String reviewPlansDir = "学习笔记/复习计划";
     }
 }

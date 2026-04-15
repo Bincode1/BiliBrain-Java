@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.bin.bilibrain.exception.BusinessException;
 import com.bin.bilibrain.exception.ErrorCode;
 import com.bin.bilibrain.model.entity.IngestionTask;
+import com.bin.bilibrain.model.entity.Transcript;
 import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.mapper.IngestionTaskMapper;
 import com.bin.bilibrain.mapper.TranscriptMapper;
@@ -71,6 +72,44 @@ public class IngestionQueueService {
         if (activeTask != null) {
             return false;
         }
+
+        LocalDateTime now = LocalDateTime.now();
+        ingestionTaskMapper.insert(IngestionTask.builder()
+            .bvid(bvid)
+            .operation("process")
+            .status("queued")
+            .errorMsg("")
+            .createdAt(now)
+            .updatedAt(now)
+            .build());
+        ingestionDispatcherService.kick();
+        return true;
+    }
+
+    @Transactional
+    public boolean reindexVideoFromChunk(String bvid) {
+        Video video = requireVideo(bvid);
+        if (video.getIsInvalid() != null && video.getIsInvalid() != 0) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "失效视频无法重新切块入库。", HttpStatus.BAD_REQUEST);
+        }
+
+        Transcript transcript = transcriptMapper.findByBvid(bvid);
+        if (transcript == null || transcript.getTranscriptText() == null || transcript.getTranscriptText().isBlank()) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "当前视频还没有可用转写内容，请先完成一次完整处理。", HttpStatus.BAD_REQUEST);
+        }
+
+        IngestionTask activeTask = ingestionDispatcherService.findLatestLiveTask(bvid);
+        if (activeTask != null) {
+            return false;
+        }
+
+        vectorSearchService.deleteByBvid(bvid);
+        videoPipelineMapper.deleteByBvid(bvid);
+        ingestionTaskMapper.deleteByBvid(bvid);
+
+        video.setSyncedAt(null);
+        video.setUpdatedAt(LocalDateTime.now());
+        videoMapper.updateById(video);
 
         LocalDateTime now = LocalDateTime.now();
         ingestionTaskMapper.insert(IngestionTask.builder()

@@ -18,11 +18,13 @@ import com.bin.bilibrain.model.vo.agent.AgentApprovalItemVO;
 import com.bin.bilibrain.model.vo.agent.AgentApprovalVO;
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
 import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
+import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.service.retrieval.KnowledgeBaseSearchService;
 import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import com.bin.bilibrain.service.skills.SkillRegistryService;
 import com.bin.bilibrain.service.tools.ToolPolicyService;
 import com.bin.bilibrain.service.tools.ToolService;
+import com.bin.bilibrain.service.tools.VaultPublishingService;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -55,6 +57,8 @@ public class UnifiedAgentService {
     private final SkillRegistryService skillRegistryService;
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
+    private final VideoMapper videoMapper;
+    private final VaultPublishingService vaultPublishingService;
     private final AgentScopeService agentScopeService;
     private final PendingApprovalStore pendingApprovalStore;
     private final ObjectMapper objectMapper;
@@ -70,12 +74,14 @@ public class UnifiedAgentService {
             knowledgeBaseSearchService,
             videoSummarySearchService,
             agentScopeService,
+            videoMapper,
+            "",
             folderId,
             videoBvid
         );
-        ReactAgent agent = buildAgent(bridge, listActiveSkills(), agentScopeService.describeScope("", folderId, videoBvid));
+        ReactAgent agent = buildAgent(bridge, listActiveSkills(), agentScopeService.describeScope(bridge.scopeMode(), bridge.folderId(), bridge.videoBvid()));
         RunnableConfig config = RunnableConfig.builder()
-            .threadId(conversationId)
+            .threadId(buildAgentThreadId(conversationId, bridge))
             .build();
         try {
             NodeOutput output = agent.invokeAndGetOutput(message, config)
@@ -94,6 +100,34 @@ public class UnifiedAgentService {
         }
     }
 
+    public AgentExecutionResult listScopeVideos(
+        Long folderId,
+        String videoBvid
+    ) {
+        UnifiedAgentToolBridge bridge = new UnifiedAgentToolBridge(
+            toolService,
+            knowledgeBaseSearchService,
+            videoSummarySearchService,
+            agentScopeService,
+            videoMapper,
+            "",
+            folderId,
+            videoBvid
+        );
+        bridge.listScopeVideos();
+        return new AgentExecutionResult(
+            buildScopeVideoListAnswer(bridge),
+            ROUTE_AGENT,
+            MODE_AGENT,
+            "",
+            List.of(),
+            listActiveSkills(),
+            bridge.skillEvents(),
+            bridge.toolEvents(),
+            null
+        );
+    }
+
     public AgentStreamRuntime createStreamRuntime(
         String conversationId,
         Long folderId,
@@ -104,13 +138,15 @@ public class UnifiedAgentService {
             knowledgeBaseSearchService,
             videoSummarySearchService,
             agentScopeService,
+            videoMapper,
+            "",
             folderId,
             videoBvid
         );
         List<SkillListItemVO> activeSkills = listActiveSkills();
-        ReactAgent agent = buildAgent(bridge, activeSkills, agentScopeService.describeScope("", folderId, videoBvid));
+        ReactAgent agent = buildAgent(bridge, activeSkills, agentScopeService.describeScope(bridge.scopeMode(), bridge.folderId(), bridge.videoBvid()));
         RunnableConfig config = RunnableConfig.builder()
-            .threadId(conversationId)
+            .threadId(buildAgentThreadId(conversationId, bridge))
             .build();
         return new AgentStreamRuntime(conversationId, activeSkills, bridge, agent, config);
     }
@@ -133,12 +169,14 @@ public class UnifiedAgentService {
             knowledgeBaseSearchService,
             videoSummarySearchService,
             agentScopeService,
+            videoMapper,
+            "",
             folderId,
             videoBvid
         );
-        ReactAgent agent = buildAgent(bridge, listActiveSkills(), agentScopeService.describeScope("", folderId, videoBvid));
+        ReactAgent agent = buildAgent(bridge, listActiveSkills(), agentScopeService.describeScope(bridge.scopeMode(), bridge.folderId(), bridge.videoBvid()));
         RunnableConfig config = RunnableConfig.builder()
-            .threadId(conversationId)
+            .threadId(buildAgentThreadId(conversationId, bridge))
             .addHumanFeedback(buildFeedback(interruption, request.feedbacks()))
             .build();
         try {
@@ -205,7 +243,7 @@ public class UnifiedAgentService {
                 "",
                 ROUTE_AGENT,
                 MODE_AGENT,
-                "命中需要人工确认的工具调用，等待审批后继续执行。",
+                "",
                 deduplicateSources(bridge.collectedSources()),
                 activeSkills,
                 bridge.skillEvents(),
@@ -216,10 +254,10 @@ public class UnifiedAgentService {
 
         pendingApprovalStore.remove(conversationId);
         return new AgentExecutionResult(
-            extractAssistantAnswer(output),
+            resolveFinalAnswer(output, bridge),
             ROUTE_AGENT,
             MODE_AGENT,
-            "统一 Agent 已完成本轮工具编排与回答生成。",
+            "",
             deduplicateSources(bridge.collectedSources()),
             activeSkills,
             bridge.skillEvents(),
@@ -256,6 +294,13 @@ public class UnifiedAgentService {
             }
         }
         return "";
+    }
+
+    private String resolveFinalAnswer(NodeOutput output, UnifiedAgentToolBridge bridge) {
+        if (bridge.hasScopeVideoListing()) {
+            return buildScopeVideoListAnswer(bridge);
+        }
+        return extractAssistantAnswer(output);
     }
 
     private InterruptionMetadata buildFeedback(
@@ -305,7 +350,6 @@ public class UnifiedAgentService {
         InterruptionMetadata interruption,
         UnifiedAgentToolBridge bridge
     ) {
-        AgentScopeService.ScopeSelection scope = agentScopeService.resolveScope("", bridge.folderId(), bridge.videoBvid());
         List<AgentApprovalItemVO> items = interruption.toolFeedbacks().stream()
             .map(toolFeedback -> new AgentApprovalItemVO(
                 toolFeedback.getId(),
@@ -316,9 +360,9 @@ public class UnifiedAgentService {
             .toList();
         return new AgentApprovalVO(
             conversationId,
-            scope.scopeMode(),
-            scope.folderId(),
-            scope.videoBvid(),
+            bridge.scopeMode(),
+            bridge.folderId(),
+            bridge.videoBvid(),
             items
         );
     }
@@ -350,6 +394,13 @@ public class UnifiedAgentService {
         if (!(content instanceof String text) || text.trim().isEmpty()) {
             arguments.put("contentMarkdown", buildFallbackMarkdown(bridge));
             arguments.remove("content_markdown");
+        }
+        String kind = String.valueOf(arguments.getOrDefault("kind", ""));
+        String title = String.valueOf(arguments.getOrDefault("title", ""));
+        if (StringUtils.hasText(kind) && StringUtils.hasText(title)) {
+            java.nio.file.Path previewPath = vaultPublishingService.previewTargetPath(kind, title);
+            arguments.putIfAbsent("target_path_preview", previewPath.toString());
+            arguments.putIfAbsent("file_name_preview", previewPath.getFileName().toString());
         }
         return writeJson(arguments);
     }
@@ -459,6 +510,42 @@ public class UnifiedAgentService {
 
     private String safe(String value) {
         return value == null ? "" : value;
+    }
+
+    static String buildScopeVideoListAnswer(UnifiedAgentToolBridge bridge) {
+        List<UnifiedAgentToolBridge.ScopeVideoItem> videos = bridge.listedScopeVideos();
+        if (videos.isEmpty()) {
+            return "当前范围内没有可用视频。";
+        }
+        StringBuilder answer = new StringBuilder();
+        answer.append("当前范围共 ").append(videos.size()).append(" 个视频：\n\n");
+        for (int index = 0; index < videos.size(); index += 1) {
+            UnifiedAgentToolBridge.ScopeVideoItem video = videos.get(index);
+            answer.append(index + 1).append(". ")
+                .append(video.title().isBlank() ? video.bvid() : video.title())
+                .append(" | UP: ")
+                .append(video.upName().isBlank() ? "-" : video.upName())
+                .append(" | BV: ")
+                .append(video.bvid());
+            if (index < videos.size() - 1) {
+                answer.append('\n');
+            }
+        }
+        return answer.toString();
+    }
+
+    static String buildAgentThreadId(String conversationId, UnifiedAgentToolBridge bridge) {
+        String baseConversationId = StringUtils.hasText(conversationId) ? conversationId.trim() : "anonymous";
+        String scopePart = switch (bridge.scopeMode()) {
+            case "video" -> "video:" + safeScopeId(bridge.videoBvid());
+            case "folder" -> "folder:" + (bridge.folderId() == null ? "none" : bridge.folderId());
+            default -> "global";
+        };
+        return baseConversationId + "::" + scopePart;
+    }
+
+    private static String safeScopeId(String value) {
+        return StringUtils.hasText(value) ? value.trim() : "none";
     }
 
     public record AgentStreamRuntime(

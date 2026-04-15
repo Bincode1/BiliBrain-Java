@@ -16,6 +16,7 @@ public record AgentResumeStreamRequest(
     Long folderId,
     @JsonAlias("bvid")
     String videoBvid,
+    @JsonAlias("scope_mode")
     String scopeMode,
     @NotEmpty(message = "feedbacks 不能为空")
     List<@Valid AgentApprovalDecisionRequest> feedbacks

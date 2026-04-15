@@ -12,6 +12,7 @@ public record AskRequest(
     Long folderId,
     @JsonAlias("bvid")
     String videoBvid,
+    @JsonAlias("scope_mode")
     String scopeMode,
     @NotBlank(message = "query 不能为空")
     @JsonAlias("query")

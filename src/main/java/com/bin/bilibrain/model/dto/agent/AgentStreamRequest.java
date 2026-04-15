@@ -12,6 +12,7 @@ public record AgentStreamRequest(
     Long folderId,
     @JsonAlias("bvid")
     String videoBvid,
+    @JsonAlias("scope_mode")
     String scopeMode,
     @JsonAlias("query")
     @NotBlank(message = "message 不能为空")

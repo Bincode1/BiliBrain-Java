@@ -1,5 +1,8 @@
 package com.bin.bilibrain.service.agent;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.bin.bilibrain.mapper.VideoMapper;
+import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.model.dto.tools.ToolCallRequest;
 import com.bin.bilibrain.model.vo.agent.AgentSkillEventVO;
 import com.bin.bilibrain.model.vo.agent.AgentToolEventVO;
@@ -21,17 +24,20 @@ public class UnifiedAgentToolBridge {
     private final KnowledgeBaseSearchService knowledgeBaseSearchService;
     private final VideoSummarySearchService videoSummarySearchService;
     private final AgentScopeService agentScopeService;
-    private final Long folderId;
-    private final String videoBvid;
+    private final VideoMapper videoMapper;
+    private final AgentScopeService.ScopeSelection scope;
     private final List<AgentToolEventVO> toolEvents = new ArrayList<>();
     private final List<AgentSkillEventVO> skillEvents = new ArrayList<>();
     private final List<ChatSourceVO> collectedSources = new ArrayList<>();
+    private List<ScopeVideoItem> listedScopeVideos = List.of();
 
     public UnifiedAgentToolBridge(
         ToolService toolService,
         KnowledgeBaseSearchService knowledgeBaseSearchService,
         VideoSummarySearchService videoSummarySearchService,
         AgentScopeService agentScopeService,
+        VideoMapper videoMapper,
+        String scopeMode,
         Long folderId,
         String videoBvid
     ) {
@@ -39,8 +45,8 @@ public class UnifiedAgentToolBridge {
         this.knowledgeBaseSearchService = knowledgeBaseSearchService;
         this.videoSummarySearchService = videoSummarySearchService;
         this.agentScopeService = agentScopeService;
-        this.folderId = folderId;
-        this.videoBvid = videoBvid;
+        this.videoMapper = videoMapper;
+        this.scope = agentScopeService.resolveScope(scopeMode, folderId, videoBvid);
     }
 
     @Tool(name = ToolService.TOOL_READ_SKILL, description = "读取指定 skill 的描述与正文")
@@ -77,9 +83,9 @@ public class UnifiedAgentToolBridge {
         Map<String, Object> summary = Map.of("query", query);
         toolEvents.add(AgentToolEventVO.start("search_knowledge_base", summary));
         try {
-            List<ChatSourceVO> sources = knowledgeBaseSearchService.searchKnowledgeBase(query, folderId, videoBvid);
+            List<ChatSourceVO> sources = knowledgeBaseSearchService.searchKnowledgeBase(query, folderId(), videoBvid());
             if (sources.isEmpty()) {
-                String message = agentScopeService.emptyContextMessage("", folderId, videoBvid);
+                String message = agentScopeService.emptyContextMessage(scopeMode(), folderId(), videoBvid());
                 toolEvents.add(AgentToolEventVO.finish(
                     "search_knowledge_base",
                     summary,
@@ -107,9 +113,9 @@ public class UnifiedAgentToolBridge {
         Map<String, Object> summary = Map.of("query", query);
         toolEvents.add(AgentToolEventVO.start("search_video_summaries", summary));
         try {
-            List<ChatSourceVO> sources = videoSummarySearchService.searchVideoSummaries(query, folderId, videoBvid);
+            List<ChatSourceVO> sources = videoSummarySearchService.searchVideoSummaries(query, folderId(), videoBvid());
             if (sources.isEmpty()) {
-                String message = agentScopeService.emptyContextMessage("", folderId, videoBvid);
+                String message = agentScopeService.emptyContextMessage(scopeMode(), folderId(), videoBvid());
                 toolEvents.add(AgentToolEventVO.finish(
                     "search_video_summaries",
                     summary,
@@ -126,6 +132,43 @@ public class UnifiedAgentToolBridge {
             return Map.of("count", sources.size(), "sources", sources);
         } catch (RuntimeException exception) {
             toolEvents.add(AgentToolEventVO.failed("search_video_summaries", summary, exception.getMessage()));
+            throw exception;
+        }
+    }
+
+    @Tool(name = "list_scope_videos", description = "列出当前范围内的视频清单，适合回答“当前有哪些视频/能看到什么视频”")
+    public Map<String, Object> listScopeVideos() {
+        Map<String, Object> summary = Map.of("scope_mode", scopeMode());
+        toolEvents.add(AgentToolEventVO.start("list_scope_videos", summary));
+        try {
+            listedScopeVideos = loadScopeVideos().stream()
+                .map(video -> new ScopeVideoItem(
+                    safe(video.getBvid()),
+                    safe(video.getTitle()),
+                    safe(video.getUpName()),
+                    video.getFolderId()
+                ))
+                .toList();
+            List<Map<String, Object>> videos = listedScopeVideos.stream()
+                .map(video -> Map.<String, Object>of(
+                    "bvid", video.bvid(),
+                    "title", video.title(),
+                    "up_name", video.upName(),
+                    "folder_id", video.folderId() == null ? "" : video.folderId()
+                ))
+                .toList();
+            toolEvents.add(AgentToolEventVO.finish(
+                "list_scope_videos",
+                summary,
+                Map.of("count", videos.size())
+            ));
+            return Map.of(
+                "count", videos.size(),
+                "scope_mode", scopeMode(),
+                "videos", videos
+            );
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed("list_scope_videos", summary, exception.getMessage()));
             throw exception;
         }
     }
@@ -179,30 +222,44 @@ public class UnifiedAgentToolBridge {
         return List.copyOf(collectedSources);
     }
 
+    public boolean hasScopeVideoListing() {
+        return !listedScopeVideos.isEmpty() || toolEvents.stream().anyMatch(event ->
+            "list_scope_videos".equals(event.name()) && "finish".equals(event.phase())
+        );
+    }
+
+    public List<ScopeVideoItem> listedScopeVideos() {
+        return List.copyOf(listedScopeVideos);
+    }
+
     public Long folderId() {
-        return folderId;
+        return scope.folderId();
     }
 
     public String videoBvid() {
-        return videoBvid;
+        return scope.videoBvid();
+    }
+
+    public String scopeMode() {
+        return scope.scopeMode();
     }
 
     private String resolveScopeType() {
-        if (StringUtils.hasText(videoBvid)) {
+        if (StringUtils.hasText(videoBvid())) {
             return "video";
         }
-        if (folderId != null) {
+        if (folderId() != null) {
             return "folder";
         }
         return "global";
     }
 
     private String resolveScopeId() {
-        if (StringUtils.hasText(videoBvid)) {
-            return videoBvid.trim();
+        if (StringUtils.hasText(videoBvid())) {
+            return videoBvid().trim();
         }
-        if (folderId != null) {
-            return String.valueOf(folderId);
+        if (folderId() != null) {
+            return String.valueOf(folderId());
         }
         return "global";
     }
@@ -211,12 +268,32 @@ public class UnifiedAgentToolBridge {
         if (StringUtils.hasText(kind)) {
             return kind.trim();
         }
-        if (StringUtils.hasText(videoBvid)) {
+        if (StringUtils.hasText(videoBvid())) {
             return "video_note";
         }
-        if (folderId != null) {
+        if (folderId() != null) {
             return "folder_guide";
         }
         return "review_plan";
+    }
+
+    private List<Video> loadScopeVideos() {
+        if (StringUtils.hasText(videoBvid())) {
+            Video video = videoMapper.selectById(videoBvid());
+            return video == null ? List.of() : List.of(video);
+        }
+        LambdaQueryWrapper<Video> queryWrapper = new LambdaQueryWrapper<Video>()
+            .eq(folderId() != null, Video::getFolderId, folderId())
+            .ne(Video::getIsInvalid, 1)
+            .orderByDesc(Video::getCreatedAt)
+            .orderByDesc(Video::getUpdatedAt);
+        return videoMapper.selectList(queryWrapper);
+    }
+
+    private String safe(String value) {
+        return value == null ? "" : value;
+    }
+
+    public record ScopeVideoItem(String bvid, String title, String upName, Long folderId) {
     }
 }

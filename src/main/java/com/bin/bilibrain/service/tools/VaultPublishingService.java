@@ -40,12 +40,7 @@ public class VaultPublishingService {
         String normalizedScopeId = normalizeRequired(scopeId, "scope_id");
 
         Path vaultRoot = appProperties.getPublishing().getVaultRoot().toAbsolutePath().normalize();
-        Path targetDirectory = switch (normalizedKind) {
-            case "video_note" -> vaultRoot.resolve(appProperties.getPublishing().getVideoNotesDir()).normalize();
-            case "folder_guide" -> vaultRoot.resolve(appProperties.getPublishing().getFolderGuidesDir()).normalize();
-            case "review_plan" -> vaultRoot.resolve(appProperties.getPublishing().getReviewPlansDir()).normalize();
-            default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的发布 kind。", HttpStatus.BAD_REQUEST);
-        };
+        Path targetDirectory = resolveTargetDirectory(vaultRoot, normalizedKind);
         ensureWithinVault(vaultRoot, targetDirectory);
 
         LocalDateTime publishedAt = LocalDateTime.now();
@@ -78,6 +73,15 @@ public class VaultPublishingService {
         result.put("target_path", targetPath.toAbsolutePath().normalize().toString());
         result.put("published_at", publishedAt.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
         return result;
+    }
+
+    public Path previewTargetPath(String kind, String title) {
+        String normalizedKind = normalizeRequired(kind, "kind");
+        String normalizedTitle = normalizeRequired(title, "title");
+        Path vaultRoot = appProperties.getPublishing().getVaultRoot().toAbsolutePath().normalize();
+        Path targetDirectory = resolveTargetDirectory(vaultRoot, normalizedKind);
+        ensureWithinVault(vaultRoot, targetDirectory);
+        return uniqueTargetPath(targetDirectory, slugify(normalizedTitle)).toAbsolutePath().normalize();
     }
 
     private String renderMarkdown(
@@ -120,6 +124,15 @@ public class VaultPublishingService {
             suffix += 1;
         }
         return candidate;
+    }
+
+    private Path resolveTargetDirectory(Path vaultRoot, String normalizedKind) {
+        return switch (normalizedKind) {
+            case "video_note" -> vaultRoot.resolve(appProperties.getPublishing().getVideoNotesDir()).normalize();
+            case "folder_guide" -> vaultRoot.resolve(appProperties.getPublishing().getFolderGuidesDir()).normalize();
+            case "review_plan" -> vaultRoot.resolve(appProperties.getPublishing().getReviewPlansDir()).normalize();
+            default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的发布 kind。", HttpStatus.BAD_REQUEST);
+        };
     }
 
     private void ensureWithinVault(Path vaultRoot, Path path) {

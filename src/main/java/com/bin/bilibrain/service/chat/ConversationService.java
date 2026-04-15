@@ -2,6 +2,7 @@ package com.bin.bilibrain.service.chat;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.bin.bilibrain.exception.BusinessException;
 import com.bin.bilibrain.exception.ErrorCode;
 import com.bin.bilibrain.mapper.ChatConversationContextStatMapper;
@@ -110,6 +111,25 @@ public class ConversationService {
         }
 
         ChatConversation conversation = requireConversation(conversationId);
+        if (agentScopeService.hasExplicitScope(scopeMode, folderId, videoBvid)) {
+            AgentScopeService.ScopeSelection scope = agentScopeService.resolveScope(scopeMode, folderId, videoBvid);
+            Long nextFolderId = scope.folderId();
+            String nextVideoBvid = blankToNull(scope.videoBvid());
+            boolean scopeChanged = !java.util.Objects.equals(conversation.getFolderId(), nextFolderId)
+                || !java.util.Objects.equals(blankToNull(conversation.getVideoBvid()), nextVideoBvid);
+            if (scopeChanged) {
+                LocalDateTime now = LocalDateTime.now();
+                chatConversationMapper.update(
+                    null,
+                    new UpdateWrapper<ChatConversation>()
+                        .eq("id", conversationId)
+                        .set("folder_id", nextFolderId)
+                        .set("video_bvid", nextVideoBvid)
+                        .set("updated_at", now)
+                );
+                conversation = requireConversation(conversationId);
+            }
+        }
         return toConversationVO(conversation);
     }
 
@@ -288,7 +308,7 @@ public class ConversationService {
         );
         return updateAssistantMessage(
             pendingMessage,
-            content,
+            mergeAssistantContent(pendingMessage.getContent(), content),
             mergedSources,
             answerMode,
             routeMode,
@@ -529,6 +549,25 @@ public class ConversationService {
             return right;
         }
         return left + "\n\n" + right;
+    }
+
+    private String mergeAssistantContent(String existing, String incoming) {
+        String left = blankToEmpty(existing);
+        String right = blankToEmpty(incoming);
+        if (!StringUtils.hasText(left) || isApprovalPlaceholder(left)) {
+            return right;
+        }
+        if (!StringUtils.hasText(right) || left.equals(right)) {
+            return left;
+        }
+        if (right.startsWith(left)) {
+            return right;
+        }
+        return left + "\n\n" + right;
+    }
+
+    private boolean isApprovalPlaceholder(String content) {
+        return "工具调用等待人工确认".equals(content) || "等待你审批后继续执行。".equals(content);
     }
 
     private <T> List<T> mergeUnique(List<T> existing, List<T> incoming) {

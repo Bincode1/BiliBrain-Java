@@ -97,6 +97,26 @@ public class SkillAgentSseService {
             sseEventBuilder.status("started", startedMessage)
         );
 
+        if (isScopeVideoListQuestion(request.message())) {
+            log.info(
+                "agent stream using fixed scope video list path: conversationId={}, folderId={}, videoBvid={}, message={}",
+                conversation.id(),
+                conversation.folderId(),
+                conversation.videoBvid(),
+                request.message()
+            );
+            return Flux.concat(
+                initialEvents,
+                Flux.defer(() -> emitResult(
+                    conversation,
+                    unifiedAgentService.listScopeVideos(conversation.folderId(), conversation.videoBvid()),
+                    new LiveStreamState(),
+                    true,
+                    false
+                ))
+            );
+        }
+
         UnifiedAgentService.AgentStreamRuntime runtime = unifiedAgentService.createStreamRuntime(
             conversation.id(),
             conversation.folderId(),
@@ -200,9 +220,12 @@ public class SkillAgentSseService {
 
         if (result.waitingApproval()) {
             String waitingMessage = "工具调用等待人工确认";
-            String approvalPreview = state.hasStreamedAnswer()
-                ? state.streamedAnswer.toString()
-                : waitingMessage;
+            boolean publishApproval = result.approval() != null
+                && !result.approval().items().isEmpty()
+                && "publish_to_vault_fs".equals(result.approval().items().getFirst().toolName());
+            String approvalPreview = publishApproval
+                ? (state.hasStreamedAnswer() ? state.streamedAnswer.toString() : "")
+                : (state.hasStreamedAnswer() ? state.streamedAnswer.toString() : waitingMessage);
             ChatMessageVO assistantMessage = toMessageVO(
                 conversationService.upsertPendingApprovalAssistantMessage(
                     conversation.id(),
@@ -219,7 +242,7 @@ public class SkillAgentSseService {
                 )
             );
             log.info("agent stream waiting approval: conversationId={}", conversation.id());
-            events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, approvalPreview));
+            events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage));
             events.add(sseEventBuilder.status("waiting_approval", waitingMessage));
             events.add(sseEventBuilder.approval(result.approval()));
             return Flux.fromIterable(events);
@@ -254,7 +277,7 @@ public class SkillAgentSseService {
                     null
                 )
         );
-        events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, result.answer()));
+        events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage));
         events.add(sseEventBuilder.done(conversation.id()));
         return Flux.fromIterable(events);
     }
@@ -275,6 +298,9 @@ public class SkillAgentSseService {
         }
         String delta = streamingOutput.chunk();
         if (delta == null || delta.isBlank()) {
+            return Flux.fromIterable(events);
+        }
+        if (runtime.bridge().hasScopeVideoListing()) {
             return Flux.fromIterable(events);
         }
         state.streamedAnswer.append(delta);
@@ -336,6 +362,27 @@ public class SkillAgentSseService {
             return "Agent 对话";
         }
         return normalized.length() <= 24 ? normalized : normalized.substring(0, 24);
+    }
+
+    private boolean isScopeVideoListQuestion(String message) {
+        if (!StringUtils.hasText(message)) {
+            return false;
+        }
+        String normalized = message.trim().replaceAll("\\s+", "").toLowerCase(java.util.Locale.ROOT);
+        boolean mentionsVideo = normalized.contains("视频");
+        boolean asksForScopeListing = normalized.contains("什么视频")
+            || normalized.contains("哪些视频")
+            || normalized.contains("视频清单")
+            || normalized.contains("视频列表")
+            || normalized.contains("看到什么视频")
+            || normalized.contains("可见视频")
+            || normalized.contains("可用视频")
+            || normalized.contains("范围内视频")
+            || normalized.contains("当前范围")
+            || normalized.contains("多少视频")
+            || normalized.contains("几个视频")
+            || normalized.contains("多少个视频");
+        return mentionsVideo && asksForScopeListing;
     }
 
     private ChatMessageVO toMessageVO(com.bin.bilibrain.model.entity.ChatMessage message) {

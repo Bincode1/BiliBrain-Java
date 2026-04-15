@@ -9,6 +9,7 @@ import com.bin.bilibrain.service.agent.AgentExecutionResult;
 import org.springframework.http.codec.ServerSentEvent;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -38,20 +39,35 @@ public class SseEventBuilder {
     public ServerSentEvent<Object> answerNormalized(
         ChatConversationVO conversation,
         AgentExecutionResult result,
-        ChatMessageVO message,
-        String content
+        ChatMessageVO message
     ) {
         return event("answer_normalized", Map.of(
-            "content", content,
-            "text", content,
             "route", result.route(),
             "route_mode", result.route(),
             "mode", result.mode(),
             "answer_mode", result.mode(),
             "sources", result.sources(),
-            "message", message,
+            "message", messageMetadata(message),
             "conversation_id", conversation.id()
         ));
+    }
+
+    private Map<String, Object> messageMetadata(ChatMessageVO message) {
+        Map<String, Object> payload = new LinkedHashMap<>();
+        payload.put("id", message.id());
+        payload.put("conversation_id", message.conversationId());
+        payload.put("role", message.role());
+        payload.put("answer_mode", message.answerMode());
+        payload.put("route_mode", message.routeMode());
+        payload.put("reasoning_text", message.reasoningText());
+        payload.put("agent_status", message.agentStatus());
+        payload.put("sources", message.sources());
+        payload.put("skill_events", message.skillEvents());
+        payload.put("tool_events", message.toolEvents());
+        payload.put("active_skills", message.activeSkills());
+        payload.put("approval", message.approval());
+        payload.put("created_at", message.createdAt());
+        return payload;
     }
 
     public ServerSentEvent<Object> sources(List<ChatSourceVO> sources) {

@@ -23,14 +23,19 @@ import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import com.bin.bilibrain.service.skills.SkillRegistryService;
 import com.bin.bilibrain.service.tools.ToolPolicyService;
 import com.bin.bilibrain.service.tools.ToolService;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.messages.Message;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -52,6 +57,7 @@ public class UnifiedAgentService {
     private final VideoSummarySearchService videoSummarySearchService;
     private final AgentScopeService agentScopeService;
     private final PendingApprovalStore pendingApprovalStore;
+    private final ObjectMapper objectMapper;
 
     public AgentExecutionResult execute(
         String conversationId,
@@ -134,7 +140,6 @@ public class UnifiedAgentService {
         RunnableConfig config = RunnableConfig.builder()
             .threadId(conversationId)
             .addHumanFeedback(buildFeedback(interruption, request.feedbacks()))
-            .resume()
             .build();
         try {
             NodeOutput output = agent.invokeAndGetOutput(Map.of(), config)
@@ -194,7 +199,8 @@ public class UnifiedAgentService {
     ) {
         List<SkillListItemVO> activeSkills = listActiveSkills();
         if (output instanceof InterruptionMetadata interruption) {
-            pendingApprovalStore.put(conversationId, interruption);
+            InterruptionMetadata hydratedInterruption = hydratePublishApproval(interruption, bridge);
+            pendingApprovalStore.put(conversationId, hydratedInterruption);
             return new AgentExecutionResult(
                 "",
                 ROUTE_AGENT,
@@ -204,7 +210,7 @@ public class UnifiedAgentService {
                 activeSkills,
                 bridge.skillEvents(),
                 bridge.toolEvents(),
-                toApproval(conversationId, interruption)
+                toApproval(conversationId, hydratedInterruption, bridge)
             );
         }
 
@@ -294,7 +300,12 @@ public class UnifiedAgentService {
         return currentArguments;
     }
 
-    private AgentApprovalVO toApproval(String conversationId, InterruptionMetadata interruption) {
+    private AgentApprovalVO toApproval(
+        String conversationId,
+        InterruptionMetadata interruption,
+        UnifiedAgentToolBridge bridge
+    ) {
+        AgentScopeService.ScopeSelection scope = agentScopeService.resolveScope("", bridge.folderId(), bridge.videoBvid());
         List<AgentApprovalItemVO> items = interruption.toolFeedbacks().stream()
             .map(toolFeedback -> new AgentApprovalItemVO(
                 toolFeedback.getId(),
@@ -303,7 +314,132 @@ public class UnifiedAgentService {
                 toolFeedback.getDescription()
             ))
             .toList();
-        return new AgentApprovalVO(conversationId, items);
+        return new AgentApprovalVO(
+            conversationId,
+            scope.scopeMode(),
+            scope.folderId(),
+            scope.videoBvid(),
+            items
+        );
+    }
+
+    private InterruptionMetadata hydratePublishApproval(
+        InterruptionMetadata interruption,
+        UnifiedAgentToolBridge bridge
+    ) {
+        InterruptionMetadata.Builder builder = InterruptionMetadata.builder(interruption.node(), interruption.state());
+        interruption.toolFeedbacks().forEach(toolFeedback -> {
+            if (!ToolService.TOOL_PUBLISH_TO_VAULT_FS.equals(toolFeedback.getName())) {
+                builder.addToolFeedback(toolFeedback);
+                return;
+            }
+            builder.addToolFeedback(
+                InterruptionMetadata.ToolFeedback.builder(toolFeedback)
+                    .arguments(hydratePublishArguments(toolFeedback.getArguments(), bridge))
+                    .build()
+            );
+        });
+        return builder.build();
+    }
+
+    private String hydratePublishArguments(String rawArguments, UnifiedAgentToolBridge bridge) {
+        Map<String, Object> arguments = parseArguments(rawArguments);
+        arguments.putIfAbsent("kind", resolvePublishKind(bridge));
+        arguments.putIfAbsent("title", resolvePublishTitle(bridge));
+        Object content = firstNonBlank(arguments.get("contentMarkdown"), arguments.get("content_markdown"));
+        if (!(content instanceof String text) || text.trim().isEmpty()) {
+            arguments.put("contentMarkdown", buildFallbackMarkdown(bridge));
+            arguments.remove("content_markdown");
+        }
+        return writeJson(arguments);
+    }
+
+    private Map<String, Object> parseArguments(String rawArguments) {
+        if (!StringUtils.hasText(rawArguments)) {
+            return new LinkedHashMap<>();
+        }
+        try {
+            return objectMapper.readValue(rawArguments, new TypeReference<LinkedHashMap<String, Object>>() {
+            });
+        } catch (JsonProcessingException exception) {
+            return new LinkedHashMap<>();
+        }
+    }
+
+    private String writeJson(Map<String, Object> arguments) {
+        try {
+            return objectMapper.writeValueAsString(arguments);
+        } catch (JsonProcessingException exception) {
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "序列化审批参数失败。", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
+    }
+
+    private String resolvePublishKind(UnifiedAgentToolBridge bridge) {
+        if (StringUtils.hasText(bridge.videoBvid())) {
+            return "video_note";
+        }
+        if (bridge.folderId() != null) {
+            return "folder_guide";
+        }
+        return "review_plan";
+    }
+
+    private String resolvePublishTitle(UnifiedAgentToolBridge bridge) {
+        List<ChatSourceVO> sources = bridge.collectedSources();
+        if (!sources.isEmpty()) {
+            String sourceTitle = sources.get(0).videoTitle();
+            if (StringUtils.hasText(sourceTitle)) {
+                if ("folder_guide".equals(resolvePublishKind(bridge))) {
+                    return sourceTitle.trim() + " 收藏夹总结";
+                }
+                return sourceTitle.trim();
+            }
+        }
+        if (bridge.folderId() != null) {
+            return "收藏夹学习总结";
+        }
+        if (StringUtils.hasText(bridge.videoBvid())) {
+            return bridge.videoBvid().trim();
+        }
+        return "学习笔记";
+    }
+
+    private String buildFallbackMarkdown(UnifiedAgentToolBridge bridge) {
+        String title = resolvePublishTitle(bridge);
+        List<ChatSourceVO> sources = deduplicateSources(bridge.collectedSources());
+        StringBuilder markdown = new StringBuilder();
+        markdown.append("# ").append(title).append("\n\n");
+        markdown.append("## 自动整理草稿\n");
+        markdown.append("以下内容基于当前检索结果自动汇总，保存前可继续编辑完善。\n\n");
+        if (sources.isEmpty()) {
+            markdown.append("- 当前没有可直接整理的来源内容。\n");
+            return markdown.toString();
+        }
+        for (int index = 0; index < sources.size(); index += 1) {
+            ChatSourceVO source = sources.get(index);
+            markdown.append("### 资料 ").append(index + 1).append("\n");
+            if (StringUtils.hasText(source.videoTitle())) {
+                markdown.append("- 视频：").append(source.videoTitle().trim()).append("\n");
+            }
+            if (StringUtils.hasText(source.upName())) {
+                markdown.append("- UP 主：").append(source.upName().trim()).append("\n");
+            }
+            if (StringUtils.hasText(source.excerpt())) {
+                markdown.append("- 摘要：").append(source.excerpt().trim()).append("\n");
+            }
+            markdown.append("\n");
+        }
+        return markdown.toString().trim();
+    }
+
+    private Object firstNonBlank(Object left, Object right) {
+        if (left instanceof String l && StringUtils.hasText(l)) {
+            return l;
+        }
+        if (right instanceof String r && StringUtils.hasText(r)) {
+            return r;
+        }
+        return left != null ? left : right;
     }
 
     private List<ChatSourceVO> deduplicateSources(List<ChatSourceVO> sources) {

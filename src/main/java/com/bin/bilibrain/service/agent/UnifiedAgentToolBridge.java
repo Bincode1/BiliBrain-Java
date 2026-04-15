@@ -10,6 +10,7 @@ import com.bin.bilibrain.service.retrieval.VideoSummarySearchService;
 import com.bin.bilibrain.service.tools.ToolService;
 import org.springframework.ai.tool.annotation.Tool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -49,7 +50,7 @@ public class UnifiedAgentToolBridge {
         Map<String, Object> summary = Map.of("skill_name", skillName);
         toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_READ_SKILL, summary));
         try {
-            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_READ_SKILL, null, skillName));
+            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(ToolService.TOOL_READ_SKILL, null, skillName, null));
             skillEvents.add(new AgentSkillEventVO(
                 String.valueOf(result.result().getOrDefault("name", skillName)),
                 String.valueOf(result.result().getOrDefault("description", ""))
@@ -129,6 +130,43 @@ public class UnifiedAgentToolBridge {
         }
     }
 
+    @Tool(name = ToolService.TOOL_PUBLISH_TO_VAULT_FS, description = "将整理好的 Markdown 内容发布到本地知识库或 Obsidian vault")
+    public Map<String, Object> publishToVaultFs(
+        @ToolParam(description = "发布类型，可选值：video_note、folder_guide、review_plan；如不确定可留空") String kind,
+        @ToolParam(description = "文档标题") String title,
+        @ToolParam(description = "要发布的 Markdown 内容") String contentMarkdown
+    ) {
+        Map<String, Object> summary = Map.of(
+            "kind", resolvePublishKind(kind),
+            "title", title == null ? "" : title
+        );
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_PUBLISH_TO_VAULT_FS, summary));
+        try {
+            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(
+                ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+                null,
+                null,
+                Map.of(
+                    "kind", resolvePublishKind(kind),
+                    "title", title == null ? "" : title,
+                    "content_markdown", contentMarkdown == null ? "" : contentMarkdown,
+                    "scope_type", resolveScopeType(),
+                    "scope_id", resolveScopeId(),
+                    "source_refs", collectedSources()
+                )
+            ));
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+                summary,
+                result.result()
+            ));
+            return result.result();
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_PUBLISH_TO_VAULT_FS, summary, exception.getMessage()));
+            throw exception;
+        }
+    }
+
     public List<AgentToolEventVO> toolEvents() {
         return List.copyOf(toolEvents);
     }
@@ -139,5 +177,46 @@ public class UnifiedAgentToolBridge {
 
     public List<ChatSourceVO> collectedSources() {
         return List.copyOf(collectedSources);
+    }
+
+    public Long folderId() {
+        return folderId;
+    }
+
+    public String videoBvid() {
+        return videoBvid;
+    }
+
+    private String resolveScopeType() {
+        if (StringUtils.hasText(videoBvid)) {
+            return "video";
+        }
+        if (folderId != null) {
+            return "folder";
+        }
+        return "global";
+    }
+
+    private String resolveScopeId() {
+        if (StringUtils.hasText(videoBvid)) {
+            return videoBvid.trim();
+        }
+        if (folderId != null) {
+            return String.valueOf(folderId);
+        }
+        return "global";
+    }
+
+    private String resolvePublishKind(String kind) {
+        if (StringUtils.hasText(kind)) {
+            return kind.trim();
+        }
+        if (StringUtils.hasText(videoBvid)) {
+            return "video_note";
+        }
+        if (folderId != null) {
+            return "folder_guide";
+        }
+        return "review_plan";
     }
 }

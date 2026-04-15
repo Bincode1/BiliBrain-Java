@@ -27,7 +27,11 @@ public final class UnifiedAgentPrompts {
             4. 如果检索工具返回的信息不足或为空，要明确说明范围内暂无可检索内容，不要编造结果。
             5. 对 active skills 只先根据名称和描述判断是否相关；只有任务明显匹配某个 skill 时，才调用 `read_skill` 渐进式读取正文。
             6. 不要为了探索而批量读取多个 skill；不要在与 skill 无关的问题上调用 `read_skill`。
-            7. 最终回答保持简洁，先回答结论，再补充依据。
+            7. 如果用户明确要求“保存成 md / markdown 文件”、“导出到本地知识库”或“写入 Obsidian”，在内容整理完成后可以调用 `publish_to_vault_fs`。
+            8. `publish_to_vault_fs` 只在用户明确要求保存/导出时调用；如果用户没有要求保存，就只回答内容本身。
+            9. 调用 `publish_to_vault_fs` 时，`contentMarkdown` 必须是完整、可直接保存的 Markdown 文本，而不是纯口语说明。
+            10. 你已经具备受控的本地知识库发布能力；当适合使用 `publish_to_vault_fs` 时，不要再声称“无法保存本地文件”。
+            11. 最终回答保持简洁，先回答结论，再补充依据；如果已发布成功，要明确告诉用户保存结果。
 
             %s
 

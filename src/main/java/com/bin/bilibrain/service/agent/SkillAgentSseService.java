@@ -112,7 +112,7 @@ public class SkillAgentSseService {
                         conversation.videoBvid(),
                         request.message()
                     );
-                    return emitResult(conversation, result, new LiveStreamState(), true);
+                    return emitResult(conversation, result, new LiveStreamState(), true, false);
                 })
             );
         }
@@ -158,7 +158,7 @@ public class SkillAgentSseService {
                     conversation.videoBvid(),
                     request
                 );
-                return emitResult(conversation, result, new LiveStreamState(), true);
+                return emitResult(conversation, result, new LiveStreamState(), true, true);
             })
         );
     }
@@ -177,14 +177,15 @@ public class SkillAgentSseService {
             lastOutput,
             runtime.bridge()
         );
-        return emitResult(conversation, result, state, false);
+        return emitResult(conversation, result, state, false, false);
     }
 
     private Flux<ServerSentEvent<Object>> emitResult(
         ChatConversationVO conversation,
         AgentExecutionResult result,
         LiveStreamState state,
-        boolean emitSkills
+        boolean emitSkills,
+        boolean resumePendingAssistant
     ) {
         List<ServerSentEvent<Object>> events = new ArrayList<>();
         if (emitSkills) {
@@ -199,10 +200,13 @@ public class SkillAgentSseService {
 
         if (result.waitingApproval()) {
             String waitingMessage = "工具调用等待人工确认";
+            String approvalPreview = state.hasStreamedAnswer()
+                ? state.streamedAnswer.toString()
+                : waitingMessage;
             ChatMessageVO assistantMessage = toMessageVO(
-                conversationService.appendAssistantMessage(
+                conversationService.upsertPendingApprovalAssistantMessage(
                     conversation.id(),
-                    waitingMessage,
+                    approvalPreview,
                     result.sources(),
                     result.mode(),
                     result.route(),
@@ -215,32 +219,40 @@ public class SkillAgentSseService {
                 )
             );
             log.info("agent stream waiting approval: conversationId={}", conversation.id());
-            events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, waitingMessage));
+            events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, approvalPreview));
             events.add(sseEventBuilder.status("waiting_approval", waitingMessage));
             events.add(sseEventBuilder.approval(result.approval()));
             return Flux.fromIterable(events);
         }
 
-        if (!state.hasStreamedAnswer()) {
-            for (String chunk : splitChunks(result.answer())) {
-                events.add(sseEventBuilder.answer(chunk));
-            }
-        }
+        appendRemainingAnswerChunks(events, state, result.answer());
 
         ChatMessageVO assistantMessage = toMessageVO(
-            conversationService.appendAssistantMessage(
-                conversation.id(),
-                result.answer(),
-                result.sources(),
-                result.mode(),
-                result.route(),
-                result.reasoning(),
-                "",
-                result.skillEvents(),
-                result.toolEvents(),
-                result.activeSkills(),
-                null
-            )
+            resumePendingAssistant
+                ? conversationService.finalizePendingApprovalAssistantMessage(
+                    conversation.id(),
+                    result.answer(),
+                    result.sources(),
+                    result.mode(),
+                    result.route(),
+                    result.reasoning(),
+                    result.skillEvents(),
+                    result.toolEvents(),
+                    result.activeSkills()
+                )
+                : conversationService.appendAssistantMessage(
+                    conversation.id(),
+                    result.answer(),
+                    result.sources(),
+                    result.mode(),
+                    result.route(),
+                    result.reasoning(),
+                    "",
+                    result.skillEvents(),
+                    result.toolEvents(),
+                    result.activeSkills(),
+                    null
+                )
         );
         events.add(sseEventBuilder.answerNormalized(conversation, result, assistantMessage, result.answer()));
         events.add(sseEventBuilder.done(conversation.id()));
@@ -282,12 +294,40 @@ public class SkillAgentSseService {
     }
 
     private List<String> splitChunks(String answer) {
+        if (!StringUtils.hasText(answer)) {
+            return List.of();
+        }
         int chunkSize = 28;
         java.util.ArrayList<String> chunks = new java.util.ArrayList<>();
         for (int start = 0; start < answer.length(); start += chunkSize) {
             chunks.add(answer.substring(start, Math.min(start + chunkSize, answer.length())));
         }
         return chunks.isEmpty() ? List.of(answer) : chunks;
+    }
+
+    private void appendRemainingAnswerChunks(
+        List<ServerSentEvent<Object>> events,
+        LiveStreamState state,
+        String finalAnswer
+    ) {
+        if (!StringUtils.hasText(finalAnswer)) {
+            return;
+        }
+        String streamedAnswer = state.streamedAnswer.toString();
+        int sharedPrefixLength = 0;
+        int maxPrefixLength = Math.min(streamedAnswer.length(), finalAnswer.length());
+        while (sharedPrefixLength < maxPrefixLength
+            && streamedAnswer.charAt(sharedPrefixLength) == finalAnswer.charAt(sharedPrefixLength)) {
+            sharedPrefixLength += 1;
+        }
+        if (state.hasStreamedAnswer() && sharedPrefixLength < streamedAnswer.length()) {
+            return;
+        }
+        String remaining = finalAnswer.substring(sharedPrefixLength);
+        for (String chunk : splitChunks(remaining)) {
+            events.add(sseEventBuilder.answer(chunk));
+        }
+        state.streamedAnswer.append(remaining);
     }
 
     private String buildTitleHint(String message) {
@@ -299,16 +339,7 @@ public class SkillAgentSseService {
     }
 
     private ChatMessageVO toMessageVO(com.bin.bilibrain.model.entity.ChatMessage message) {
-        return new ChatMessageVO(
-            message.getId(),
-            message.getConversationId(),
-            message.getRole(),
-            message.getContent(),
-            message.getSourcesJson(),
-            message.getAnswerMode(),
-            message.getRouteMode(),
-            message.getCreatedAt() == null ? "" : message.getCreatedAt().toString()
-        );
+        return conversationService.toMessageVO(message);
     }
 
     private String messageOf(Throwable exception) {

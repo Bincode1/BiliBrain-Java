@@ -32,6 +32,8 @@ import org.springframework.util.StringUtils;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @Service
@@ -108,22 +110,7 @@ public class ConversationService {
         }
 
         ChatConversation conversation = requireConversation(conversationId);
-        if (!agentScopeService.hasExplicitScope(scopeMode, folderId, videoBvid)) {
-            return toConversationVO(conversation);
-        }
-
-        AgentScopeService.ScopeSelection scope = agentScopeService.resolveScope(scopeMode, folderId, videoBvid);
-        boolean changed = !java.util.Objects.equals(conversation.getFolderId(), scope.folderId())
-            || !java.util.Objects.equals(blankToNull(conversation.getVideoBvid()), blankToNull(scope.videoBvid()));
-        if (!changed) {
-            return toConversationVO(conversation);
-        }
-
-        conversation.setFolderId(scope.folderId());
-        conversation.setVideoBvid(blankToNull(scope.videoBvid()));
-        conversation.setUpdatedAt(LocalDateTime.now());
-        chatConversationMapper.updateById(conversation);
-        return toConversationVO(requireConversation(conversationId));
+        return toConversationVO(conversation);
     }
 
     public ChatConversationVO updateConversation(String conversationId, UpdateConversationRequest request) {
@@ -212,6 +199,108 @@ public class ConversationService {
         );
     }
 
+    public ChatMessage upsertPendingApprovalAssistantMessage(
+        String conversationId,
+        String content,
+        List<ChatSourceVO> sources,
+        String answerMode,
+        String routeMode,
+        String reasoningText,
+        String agentStatus,
+        List<AgentSkillEventVO> skillEvents,
+        List<AgentToolEventVO> toolEvents,
+        List<SkillListItemVO> activeSkills,
+        AgentApprovalVO approval
+    ) {
+        ChatMessage pendingMessage = findLatestPendingApprovalMessage(conversationId);
+        if (pendingMessage == null) {
+            return appendAssistantMessage(
+                conversationId,
+                content,
+                sources,
+                answerMode,
+                routeMode,
+                reasoningText,
+                agentStatus,
+                skillEvents,
+                toolEvents,
+                activeSkills,
+                approval
+            );
+        }
+        return updateAssistantMessage(
+            pendingMessage,
+            content,
+            sources,
+            answerMode,
+            routeMode,
+            reasoningText,
+            agentStatus,
+            skillEvents,
+            toolEvents,
+            activeSkills,
+            approval
+        );
+    }
+
+    public ChatMessage finalizePendingApprovalAssistantMessage(
+        String conversationId,
+        String content,
+        List<ChatSourceVO> sources,
+        String answerMode,
+        String routeMode,
+        String reasoningText,
+        List<AgentSkillEventVO> skillEvents,
+        List<AgentToolEventVO> toolEvents,
+        List<SkillListItemVO> activeSkills
+    ) {
+        ChatMessage pendingMessage = findLatestPendingApprovalMessage(conversationId);
+        if (pendingMessage == null) {
+            return appendAssistantMessage(
+                conversationId,
+                content,
+                sources,
+                answerMode,
+                routeMode,
+                reasoningText,
+                "",
+                skillEvents,
+                toolEvents,
+                activeSkills,
+                null
+            );
+        }
+        List<ChatSourceVO> mergedSources = mergeUnique(
+            readList(pendingMessage.getSourcesJson(), ChatSourceVO.class),
+            sources
+        );
+        List<AgentSkillEventVO> mergedSkillEvents = mergeUnique(
+            readList(pendingMessage.getSkillEventsJson(), AgentSkillEventVO.class),
+            skillEvents
+        );
+        List<AgentToolEventVO> mergedToolEvents = mergeUnique(
+            readList(pendingMessage.getToolEventsJson(), AgentToolEventVO.class),
+            toolEvents
+        );
+        List<SkillListItemVO> mergedActiveSkills = mergeUnique(
+            readList(pendingMessage.getActiveSkillsJson(), SkillListItemVO.class),
+            activeSkills
+        );
+        return updateAssistantMessage(
+            pendingMessage,
+            content,
+            mergedSources,
+            answerMode,
+            routeMode,
+            mergeText(pendingMessage.getReasoningText(), reasoningText),
+            "",
+            mergedSkillEvents,
+            mergedToolEvents,
+            mergedActiveSkills,
+            null
+        );
+    }
+
     public ChatMessageVO toMessageVO(ChatMessage message) {
         return new ChatMessageVO(
             message.getId(),
@@ -281,6 +370,57 @@ public class ConversationService {
         refreshContextStats(conversationId);
         conversationMemoryService.compactIfNeeded(conversationId);
         return message;
+    }
+
+    private ChatMessage updateAssistantMessage(
+        ChatMessage message,
+        String content,
+        List<ChatSourceVO> sources,
+        String answerMode,
+        String routeMode,
+        String reasoningText,
+        String agentStatus,
+        List<AgentSkillEventVO> skillEvents,
+        List<AgentToolEventVO> toolEvents,
+        List<SkillListItemVO> activeSkills,
+        AgentApprovalVO approval
+    ) {
+        requireConversation(message.getConversationId());
+        LocalDateTime now = LocalDateTime.now();
+        message.setContent(content);
+        message.setSourcesJson(writeJson(sources, "[]"));
+        message.setAnswerMode(blankToEmpty(answerMode));
+        message.setRouteMode(blankToEmpty(routeMode));
+        message.setReasoningText(blankToEmpty(reasoningText));
+        message.setAgentStatus(blankToEmpty(agentStatus));
+        message.setSkillEventsJson(writeJson(skillEvents, "[]"));
+        message.setToolEventsJson(writeJson(toolEvents, "[]"));
+        message.setActiveSkillsJson(writeJson(activeSkills, "[]"));
+        message.setApprovalJson(approval == null ? "" : writeJson(approval, ""));
+        chatMessageMapper.updateById(message);
+
+        chatConversationMapper.update(
+            null,
+            new LambdaUpdateWrapper<ChatConversation>()
+                .eq(ChatConversation::getId, message.getConversationId())
+                .set(ChatConversation::getUpdatedAt, now)
+        );
+
+        refreshContextStats(message.getConversationId());
+        conversationMemoryService.compactIfNeeded(message.getConversationId());
+        return message;
+    }
+
+    private ChatMessage findLatestPendingApprovalMessage(String conversationId) {
+        return chatMessageMapper.selectOne(
+            new LambdaQueryWrapper<ChatMessage>()
+                .eq(ChatMessage::getConversationId, conversationId)
+                .eq(ChatMessage::getRole, "ASSISTANT")
+                .ne(ChatMessage::getApprovalJson, "")
+                .orderByDesc(ChatMessage::getCreatedAt)
+                .orderByDesc(ChatMessage::getId)
+                .last("LIMIT 1")
+        );
     }
 
     private ChatConversation requireConversation(String conversationId) {
@@ -374,6 +514,32 @@ public class ConversationService {
         }
         String normalized = content.trim().replaceAll("\\s+", " ");
         return normalized.length() <= 40 ? normalized : normalized.substring(0, 40);
+    }
+
+    private String mergeText(String existing, String incoming) {
+        String left = blankToEmpty(existing);
+        String right = blankToEmpty(incoming);
+        if (!StringUtils.hasText(left)) {
+            return right;
+        }
+        if (!StringUtils.hasText(right) || left.equals(right)) {
+            return left;
+        }
+        if (right.startsWith(left)) {
+            return right;
+        }
+        return left + "\n\n" + right;
+    }
+
+    private <T> List<T> mergeUnique(List<T> existing, List<T> incoming) {
+        LinkedHashSet<T> merged = new LinkedHashSet<>();
+        if (existing != null) {
+            merged.addAll(existing);
+        }
+        if (incoming != null) {
+            merged.addAll(incoming);
+        }
+        return new ArrayList<>(merged);
     }
 
     private String safeJson(String value) {

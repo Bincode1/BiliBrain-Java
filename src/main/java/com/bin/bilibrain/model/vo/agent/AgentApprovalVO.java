@@ -8,6 +8,9 @@ import java.util.List;
 @JsonNaming(PropertyNamingStrategies.SnakeCaseStrategy.class)
 public record AgentApprovalVO(
     String conversationId,
+    String scopeMode,
+    Long folderId,
+    String videoBvid,
     List<AgentApprovalItemVO> items
 ) {
 }

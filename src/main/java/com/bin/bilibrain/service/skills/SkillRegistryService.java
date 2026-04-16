@@ -3,6 +3,7 @@ package com.bin.bilibrain.service.skills;
 import com.alibaba.cloud.ai.graph.skills.SkillMetadata;
 import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
 import com.bin.bilibrain.config.AppProperties;
+import com.bin.bilibrain.config.ProjectPathResolver;
 import com.bin.bilibrain.exception.BusinessException;
 import com.bin.bilibrain.exception.ErrorCode;
 import com.bin.bilibrain.model.dto.skills.SkillCreateRequest;
@@ -28,6 +29,7 @@ public class SkillRegistryService {
     private final SkillRegistry skillRegistry;
     private final SkillActivationService skillActivationService;
     private final AppProperties appProperties;
+    private final ProjectPathResolver projectPathResolver;
 
     public List<SkillListItemVO> listSkills() {
         skillRegistry.reload();
@@ -58,7 +60,7 @@ public class SkillRegistryService {
 
     public SkillDetailVO createSkill(SkillCreateRequest request) {
         String skillName = normalizeSkillName(request.name());
-        Path skillsRoot = appProperties.getStorage().getSkillsRoot().toAbsolutePath().normalize();
+        Path skillsRoot = projectPathResolver.resolveFromProjectRoot(appProperties.getStorage().getSkillsRoot());
         Path skillDirectory = skillsRoot.resolve(skillName).normalize();
         if (!skillDirectory.startsWith(skillsRoot)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的 skill 路径。", HttpStatus.BAD_REQUEST);

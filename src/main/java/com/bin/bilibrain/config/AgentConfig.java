@@ -14,9 +14,11 @@ import javax.sql.DataSource;
 public class AgentConfig {
 
     @Bean
-    public SkillRegistry skillRegistry(AppProperties appProperties) {
+    public SkillRegistry skillRegistry(AppProperties appProperties, ProjectPathResolver projectPathResolver) {
         return FileSystemSkillRegistry.builder()
-            .projectSkillsDirectory(appProperties.getStorage().getSkillsRoot().toAbsolutePath().normalize().toString())
+            .projectSkillsDirectory(
+                projectPathResolver.resolveFromProjectRoot(appProperties.getStorage().getSkillsRoot()).toString()
+            )
             .build();
     }
 

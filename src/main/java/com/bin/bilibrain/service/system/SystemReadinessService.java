@@ -1,6 +1,7 @@
 package com.bin.bilibrain.service.system;
 
 import com.bin.bilibrain.config.AppProperties;
+import com.bin.bilibrain.config.ProjectPathResolver;
 import com.bin.bilibrain.model.vo.system.ReadinessCheckVO;
 import com.bin.bilibrain.model.vo.system.SystemReadinessVO;
 import io.milvus.v2.client.MilvusClientV2;
@@ -47,6 +48,7 @@ public class SystemReadinessService {
 
     private final JdbcTemplate jdbcTemplate;
     private final AppProperties appProperties;
+    private final ProjectPathResolver projectPathResolver;
     private final Environment environment;
     private final ObjectProvider<MilvusClientV2> milvusClientProvider;
     private final ObjectProvider<ChatModel> chatModelProvider;
@@ -156,7 +158,11 @@ public class SystemReadinessService {
     }
 
     private ReadinessCheckVO checkSkillsRoot() {
-        return checkDirectory("skills_root", appProperties.getStorage().getSkillsRoot(), false);
+        return checkDirectory(
+            "skills_root",
+            projectPathResolver.resolveFromProjectRoot(appProperties.getStorage().getSkillsRoot()),
+            false
+        );
     }
 
     private ReadinessCheckVO checkToolsWorkspace() {

@@ -14,6 +14,7 @@ import java.util.List;
 @RequiredArgsConstructor
 public class StorageBootstrap implements ApplicationRunner {
     private final AppProperties appProperties;
+    private final ProjectPathResolver projectPathResolver;
 
     @Override
     public void run(ApplicationArguments args) throws Exception {
@@ -23,7 +24,7 @@ public class StorageBootstrap implements ApplicationRunner {
             appProperties.getStorage().getAudioDir(),
             appProperties.getStorage().getVectorDbDir(),
             appProperties.getStorage().getToolsWorkspaceRoot(),
-            appProperties.getStorage().getSkillsRoot()
+            projectPathResolver.resolveFromProjectRoot(appProperties.getStorage().getSkillsRoot())
         ));
     }
 

@@ -161,6 +161,8 @@ public class ChatAnswerService {
                 你是一个 B 站知识库问答助手。
                 你现在拿到的是视频摘要级上下文，适合回答概括、总结、主线梳理类问题。
                 只允许基于提供的上下文回答；如果上下文不足，请明确说明不知道，不要编造。
+                如果引用了上下文里的来源，就直接在对应句子后使用 `[1]`、`[2]` 这种格式标注。
+                引用编号必须对应下面知识上下文里的来源编号，不要写成“资料1”“来源1”或其他格式。
                 输出中文，先直接回答，再给出简短结论。
                 """;
         }
@@ -168,6 +170,8 @@ public class ChatAnswerService {
             你是一个 B 站知识库问答助手。
             你现在拿到的是 transcript chunk 级上下文，适合回答细节、事实和片段内容问题。
             只允许基于提供的上下文回答；如果上下文不足，请明确说明不知道，不要编造。
+            如果引用了上下文里的来源，就直接在对应句子后使用 `[1]`、`[2]` 这种格式标注。
+            引用编号必须对应下面知识上下文里的来源编号，不要写成“资料1”“来源1”或其他格式。
             输出中文，先直接回答，再简要补充依据。
             """;
     }
@@ -185,8 +189,8 @@ public class ChatAnswerService {
         for (int index = 0; index < sources.size(); index++) {
             ChatSourceVO source = sources.get(index);
             String header = ROUTE_VIDEO_SUMMARY.equals(route)
-                ? "[摘要 %d]".formatted(index + 1)
-                : "[片段 %d]".formatted(index + 1);
+                ? "[来源 %d][摘要]".formatted(index + 1)
+                : "[来源 %d][片段]".formatted(index + 1);
             String timeWindow = source.startSeconds() == null && source.endSeconds() == null
                 ? ""
                 : "\n时间范围：" + safe(source.startSeconds()) + "s - " + safe(source.endSeconds()) + "s";

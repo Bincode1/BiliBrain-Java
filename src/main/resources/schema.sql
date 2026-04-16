@@ -98,6 +98,7 @@ CREATE TABLE IF NOT EXISTS chat_messages (
     role VARCHAR(32) NOT NULL,
     content LONGTEXT NOT NULL,
     sources_json LONGTEXT,
+    citation_segments_json LONGTEXT,
     answer_mode VARCHAR(32),
     route_mode VARCHAR(32),
     reasoning_text LONGTEXT,

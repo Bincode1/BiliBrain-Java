@@ -23,6 +23,7 @@ public class ChatMessage {
 
     private String content;
     private String sourcesJson;
+    private String citationSegmentsJson;
     private String answerMode;
     private String routeMode;
     private String reasoningText;

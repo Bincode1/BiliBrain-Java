@@ -54,4 +54,9 @@ public class ChatController {
     public BaseResponse<List<ChatMessageVO>> getHistory(@RequestParam("conversation_id") String conversationId) {
         return ResultUtils.success(conversationService.getHistory(conversationId));
     }
+
+    @GetMapping("/api/chat/messages/{messageId}")
+    public BaseResponse<ChatMessageVO> getMessage(@PathVariable Long messageId) {
+        return ResultUtils.success(conversationService.getMessage(messageId));
+    }
 }

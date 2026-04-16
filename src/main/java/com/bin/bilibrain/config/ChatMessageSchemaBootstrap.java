@@ -20,6 +20,7 @@ public class ChatMessageSchemaBootstrap implements InitializingBean {
     @Override
     public void afterPropertiesSet() {
         Map<String, String> requiredColumns = new LinkedHashMap<>();
+        requiredColumns.put("citation_segments_json", "LONGTEXT");
         requiredColumns.put("reasoning_text", "LONGTEXT");
         requiredColumns.put("agent_status", "VARCHAR(255)");
         requiredColumns.put("skill_events_json", "LONGTEXT");

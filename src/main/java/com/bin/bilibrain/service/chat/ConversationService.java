@@ -19,6 +19,7 @@ import com.bin.bilibrain.model.entity.ChatMessage;
 import com.bin.bilibrain.model.vo.agent.AgentApprovalVO;
 import com.bin.bilibrain.model.vo.agent.AgentSkillEventVO;
 import com.bin.bilibrain.model.vo.agent.AgentToolEventVO;
+import com.bin.bilibrain.model.vo.chat.ChatCitationSegmentVO;
 import com.bin.bilibrain.model.vo.chat.ChatConversationVO;
 import com.bin.bilibrain.model.vo.chat.ChatMessageVO;
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
@@ -162,6 +163,21 @@ public class ConversationService {
             .toList();
     }
 
+    public ChatMessageVO getMessage(Long messageId) {
+        return toMessageVO(getMessageEntity(messageId));
+    }
+
+    public ChatMessage getMessageEntity(Long messageId) {
+        if (messageId == null) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "messageId 不能为空。", HttpStatus.BAD_REQUEST);
+        }
+        ChatMessage message = chatMessageMapper.selectById(messageId);
+        if (message == null) {
+            throw new BusinessException(ErrorCode.NOT_FOUND_ERROR, "找不到这条消息。", HttpStatus.NOT_FOUND);
+        }
+        return message;
+    }
+
     public ChatMessage appendMessage(String conversationId, String role, String content, String sourcesJson) {
         return appendMessage(conversationId, role, content, sourcesJson, "", "");
     }
@@ -179,6 +195,7 @@ public class ConversationService {
             role,
             content,
             sourcesJson,
+            "[]",
             answerMode,
             routeMode,
             "",
@@ -203,11 +220,42 @@ public class ConversationService {
         List<SkillListItemVO> activeSkills,
         AgentApprovalVO approval
     ) {
+        return appendAssistantMessage(
+            conversationId,
+            content,
+            sources,
+            List.of(),
+            answerMode,
+            routeMode,
+            reasoningText,
+            agentStatus,
+            skillEvents,
+            toolEvents,
+            activeSkills,
+            approval
+        );
+    }
+
+    public ChatMessage appendAssistantMessage(
+        String conversationId,
+        String content,
+        List<ChatSourceVO> sources,
+        List<ChatCitationSegmentVO> citationSegments,
+        String answerMode,
+        String routeMode,
+        String reasoningText,
+        String agentStatus,
+        List<AgentSkillEventVO> skillEvents,
+        List<AgentToolEventVO> toolEvents,
+        List<SkillListItemVO> activeSkills,
+        AgentApprovalVO approval
+    ) {
         return appendMessageInternal(
             conversationId,
             "ASSISTANT",
             content,
             writeJson(sources, "[]"),
+            writeJson(citationSegments, "[]"),
             answerMode,
             routeMode,
             reasoningText,
@@ -223,6 +271,7 @@ public class ConversationService {
         String conversationId,
         String content,
         List<ChatSourceVO> sources,
+        List<ChatCitationSegmentVO> citationSegments,
         String answerMode,
         String routeMode,
         String reasoningText,
@@ -238,6 +287,7 @@ public class ConversationService {
                 conversationId,
                 content,
                 sources,
+                citationSegments,
                 answerMode,
                 routeMode,
                 reasoningText,
@@ -252,6 +302,7 @@ public class ConversationService {
             pendingMessage,
             content,
             sources,
+            citationSegments,
             answerMode,
             routeMode,
             reasoningText,
@@ -267,6 +318,7 @@ public class ConversationService {
         String conversationId,
         String content,
         List<ChatSourceVO> sources,
+        List<ChatCitationSegmentVO> citationSegments,
         String answerMode,
         String routeMode,
         String reasoningText,
@@ -280,6 +332,7 @@ public class ConversationService {
                 conversationId,
                 content,
                 sources,
+                citationSegments,
                 answerMode,
                 routeMode,
                 reasoningText,
@@ -310,6 +363,7 @@ public class ConversationService {
             pendingMessage,
             mergeAssistantContent(pendingMessage.getContent(), content),
             mergedSources,
+            citationSegments,
             answerMode,
             routeMode,
             mergeText(pendingMessage.getReasoningText(), reasoningText),
@@ -329,6 +383,7 @@ public class ConversationService {
             message.getContent(),
             safeJson(message.getSourcesJson()),
             readList(message.getSourcesJson(), ChatSourceVO.class),
+            readList(message.getCitationSegmentsJson(), ChatCitationSegmentVO.class),
             blankToEmpty(message.getAnswerMode()),
             blankToEmpty(message.getRouteMode()),
             blankToEmpty(message.getReasoningText()),
@@ -341,11 +396,19 @@ public class ConversationService {
         );
     }
 
+    public ChatMessage updateAssistantCitationSegments(Long messageId, List<ChatCitationSegmentVO> citationSegments) {
+        ChatMessage message = getMessageEntity(messageId);
+        message.setCitationSegmentsJson(writeJson(citationSegments, "[]"));
+        chatMessageMapper.updateById(message);
+        return message;
+    }
+
     private ChatMessage appendMessageInternal(
         String conversationId,
         String role,
         String content,
         String sourcesJson,
+        String citationSegmentsJson,
         String answerMode,
         String routeMode,
         String reasoningText,
@@ -362,6 +425,7 @@ public class ConversationService {
             .role(role)
             .content(content)
             .sourcesJson(safeJson(sourcesJson))
+            .citationSegmentsJson(safeArrayJson(citationSegmentsJson))
             .answerMode(blankToEmpty(answerMode))
             .routeMode(blankToEmpty(routeMode))
             .reasoningText(blankToEmpty(reasoningText))
@@ -396,6 +460,7 @@ public class ConversationService {
         ChatMessage message,
         String content,
         List<ChatSourceVO> sources,
+        List<ChatCitationSegmentVO> citationSegments,
         String answerMode,
         String routeMode,
         String reasoningText,
@@ -409,6 +474,7 @@ public class ConversationService {
         LocalDateTime now = LocalDateTime.now();
         message.setContent(content);
         message.setSourcesJson(writeJson(sources, "[]"));
+        message.setCitationSegmentsJson(writeJson(citationSegments, "[]"));
         message.setAnswerMode(blankToEmpty(answerMode));
         message.setRouteMode(blankToEmpty(routeMode));
         message.setReasoningText(blankToEmpty(reasoningText));

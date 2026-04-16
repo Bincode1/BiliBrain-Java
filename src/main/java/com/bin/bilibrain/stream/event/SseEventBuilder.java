@@ -47,8 +47,21 @@ public class SseEventBuilder {
             "mode", result.mode(),
             "answer_mode", result.mode(),
             "sources", result.sources(),
+            "citation_segments", result.citationSegments(),
             "message", messageMetadata(message),
             "conversation_id", conversation.id()
+        ));
+    }
+
+    public ServerSentEvent<Object> citationSegments(
+        String conversationId,
+        Long messageId,
+        List<?> citationSegments
+    ) {
+        return event("citation_segments", Map.of(
+            "conversation_id", conversationId,
+            "message_id", messageId,
+            "citation_segments", citationSegments
         ));
     }
 
@@ -62,6 +75,7 @@ public class SseEventBuilder {
         payload.put("reasoning_text", message.reasoningText());
         payload.put("agent_status", message.agentStatus());
         payload.put("sources", message.sources());
+        payload.put("citation_segments", message.citationSegments());
         payload.put("skill_events", message.skillEvents());
         payload.put("tool_events", message.toolEvents());
         payload.put("active_skills", message.activeSkills());

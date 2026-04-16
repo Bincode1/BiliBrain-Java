@@ -16,6 +16,7 @@ import com.bin.bilibrain.model.dto.agent.AgentApprovalDecisionRequest;
 import com.bin.bilibrain.model.dto.agent.AgentResumeStreamRequest;
 import com.bin.bilibrain.model.vo.agent.AgentApprovalItemVO;
 import com.bin.bilibrain.model.vo.agent.AgentApprovalVO;
+import com.bin.bilibrain.model.vo.chat.ChatCitationSegmentVO;
 import com.bin.bilibrain.model.vo.chat.ChatSourceVO;
 import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
 import com.bin.bilibrain.mapper.VideoMapper;
@@ -61,6 +62,7 @@ public class UnifiedAgentService {
     private final VaultPublishingService vaultPublishingService;
     private final AgentScopeService agentScopeService;
     private final PendingApprovalStore pendingApprovalStore;
+    private final CitationAttributionService citationAttributionService;
     private final ObjectMapper objectMapper;
 
     public AgentExecutionResult execute(
@@ -120,6 +122,7 @@ public class UnifiedAgentService {
             ROUTE_AGENT,
             MODE_AGENT,
             "",
+            List.of(),
             List.of(),
             listActiveSkills(),
             bridge.skillEvents(),
@@ -245,6 +248,7 @@ public class UnifiedAgentService {
                 MODE_AGENT,
                 "",
                 deduplicateSources(bridge.collectedSources()),
+                List.of(),
                 activeSkills,
                 bridge.skillEvents(),
                 bridge.toolEvents(),
@@ -253,12 +257,15 @@ public class UnifiedAgentService {
         }
 
         pendingApprovalStore.remove(conversationId);
+        List<ChatSourceVO> sources = deduplicateSources(bridge.collectedSources());
+        String answer = resolveFinalAnswer(output, bridge);
         return new AgentExecutionResult(
-            resolveFinalAnswer(output, bridge),
+            answer,
             ROUTE_AGENT,
             MODE_AGENT,
             "",
-            deduplicateSources(bridge.collectedSources()),
+            sources,
+            List.of(),
             activeSkills,
             bridge.skillEvents(),
             bridge.toolEvents(),
@@ -272,6 +279,10 @@ public class UnifiedAgentService {
         UnifiedAgentToolBridge bridge
     ) {
         return adaptResult(conversationId, output, bridge);
+    }
+
+    public List<ChatCitationSegmentVO> attributeCitations(String answer, List<ChatSourceVO> sources) {
+        return citationAttributionService.attribute(answer, sources);
     }
 
     private List<SkillListItemVO> listActiveSkills() {

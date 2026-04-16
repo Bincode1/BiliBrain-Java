@@ -32,6 +32,7 @@ public class ToolService {
     public static final String TOOL_WRITE_TEXT_FILE = "write_text_file";
     public static final String TOOL_INSERT_TEXT_FILE = "insert_text_file";
     public static final String TOOL_PUBLISH_TO_VAULT_FS = "publish_to_vault_fs";
+    public static final String TOOL_RUN_COMMAND = "run_command";
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_FAILED = "FAILED";
 
@@ -41,6 +42,7 @@ public class ToolService {
     private final WorkspaceService workspaceService;
     private final AgentScopeFileToolAdapter agentScopeFileToolAdapter;
     private final VaultPublishingService vaultPublishingService;
+    private final CommandExecutionService commandExecutionService;
     private final ObjectMapper objectMapper;
 
     public List<ToolDefinitionVO> listTools() {
@@ -91,6 +93,12 @@ public class ToolService {
                 requiredStringArg(request, "path"),
                 requiredStringArg(request, "content"),
                 requiredIntArg(request, "line")
+            );
+            case TOOL_RUN_COMMAND -> commandExecutionService.runCommand(
+                request.workspaceId(),
+                requiredStringArg(request, "command"),
+                stringArg(request, "cwd", "."),
+                intArg(request, "timeout_seconds", null)
             );
             case TOOL_PUBLISH_TO_VAULT_FS -> vaultPublishingService.publishToVaultFs(
                 requiredStringArg(request, "kind"),
@@ -162,6 +170,18 @@ public class ToolService {
         if (value == null) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, key + " 不能为空", HttpStatus.BAD_REQUEST);
         }
+        return parseIntArg(value, key);
+    }
+
+    private Integer intArg(ToolCallRequest request, String key, Integer defaultValue) {
+        Object value = arguments(request).get(key);
+        if (value == null) {
+            return defaultValue;
+        }
+        return parseIntArg(value, key);
+    }
+
+    private Integer parseIntArg(Object value, String key) {
         if (value instanceof Number number) {
             return number.intValue();
         }

@@ -93,13 +93,17 @@ public class UnifiedAgentToolBridge {
                 ));
                 return Map.of("count", 0, "sources", List.of(), "message", message);
             }
-            collectedSources.addAll(sources);
+            List<Map<String, Object>> referencedSources = collectSources(sources);
             toolEvents.add(AgentToolEventVO.finish(
                 "search_knowledge_base",
                 summary,
                 Map.of("count", sources.size())
             ));
-            return Map.of("count", sources.size(), "sources", sources);
+            return Map.of(
+                "count", referencedSources.size(),
+                "sources", referencedSources,
+                "citation_rule", "回答中引用这些来源时，必须使用 ref_index 对应的 [1]、[2] 格式。"
+            );
         } catch (RuntimeException exception) {
             toolEvents.add(AgentToolEventVO.failed("search_knowledge_base", summary, exception.getMessage()));
             throw exception;
@@ -123,13 +127,17 @@ public class UnifiedAgentToolBridge {
                 ));
                 return Map.of("count", 0, "sources", List.of(), "message", message);
             }
-            collectedSources.addAll(sources);
+            List<Map<String, Object>> referencedSources = collectSources(sources);
             toolEvents.add(AgentToolEventVO.finish(
                 "search_video_summaries",
                 summary,
                 Map.of("count", sources.size())
             ));
-            return Map.of("count", sources.size(), "sources", sources);
+            return Map.of(
+                "count", referencedSources.size(),
+                "sources", referencedSources,
+                "citation_rule", "回答中引用这些来源时，必须使用 ref_index 对应的 [1]、[2] 格式。"
+            );
         } catch (RuntimeException exception) {
             toolEvents.add(AgentToolEventVO.failed("search_video_summaries", summary, exception.getMessage()));
             throw exception;
@@ -206,6 +214,40 @@ public class UnifiedAgentToolBridge {
             return result.result();
         } catch (RuntimeException exception) {
             toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_PUBLISH_TO_VAULT_FS, summary, exception.getMessage()));
+            throw exception;
+        }
+    }
+
+    @Tool(name = ToolService.TOOL_RUN_COMMAND, description = "在受控工作目录中执行一次非交互式命令行命令。适合调用已安装的 CLI、检查环境或处理临时产物；需要人工审批后才会真正执行。")
+    public Map<String, Object> runCommand(
+        @ToolParam(description = "要执行的命令，例如 python -V 或 dir") String command,
+        @ToolParam(description = "相对工作目录，默认 .；只能位于工具工作区内") String cwd,
+        @ToolParam(description = "超时时间，单位秒，范围 1-120，默认 30") Integer timeoutSeconds
+    ) {
+        Map<String, Object> summary = Map.of(
+            "command", command == null ? "" : command,
+            "cwd", StringUtils.hasText(cwd) ? cwd : "."
+        );
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_RUN_COMMAND, summary));
+        try {
+            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(
+                ToolService.TOOL_RUN_COMMAND,
+                null,
+                null,
+                Map.of(
+                    "command", command == null ? "" : command,
+                    "cwd", StringUtils.hasText(cwd) ? cwd : ".",
+                    "timeout_seconds", timeoutSeconds == null ? 30 : timeoutSeconds
+                )
+            ));
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_RUN_COMMAND,
+                summary,
+                result.result()
+            ));
+            return result.result();
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_RUN_COMMAND, summary, exception.getMessage()));
             throw exception;
         }
     }
@@ -288,6 +330,47 @@ public class UnifiedAgentToolBridge {
             .orderByDesc(Video::getCreatedAt)
             .orderByDesc(Video::getUpdatedAt);
         return videoMapper.selectList(queryWrapper);
+    }
+
+    private List<Map<String, Object>> collectSources(List<ChatSourceVO> sources) {
+        List<Map<String, Object>> referencedSources = new ArrayList<>();
+        for (ChatSourceVO source : sources) {
+            int refIndex = indexOfSource(source);
+            if (refIndex < 0) {
+                collectedSources.add(source);
+                refIndex = collectedSources.size();
+            } else {
+                refIndex += 1;
+            }
+            referencedSources.add(toReferencedSource(refIndex, source));
+        }
+        return referencedSources;
+    }
+
+    private int indexOfSource(ChatSourceVO source) {
+        for (int index = 0; index < collectedSources.size(); index += 1) {
+            ChatSourceVO existing = collectedSources.get(index);
+            if (safe(existing.sourceType()).equals(safe(source.sourceType()))
+                && safe(existing.bvid()).equals(safe(source.bvid()))
+                && safe(existing.excerpt()).equals(safe(source.excerpt()))) {
+                return index;
+            }
+        }
+        return -1;
+    }
+
+    private Map<String, Object> toReferencedSource(int refIndex, ChatSourceVO source) {
+        return Map.of(
+            "ref_index", refIndex,
+            "source_type", safe(source.sourceType()),
+            "bvid", safe(source.bvid()),
+            "folder_id", source.folderId() == null ? "" : source.folderId(),
+            "video_title", safe(source.videoTitle()),
+            "up_name", safe(source.upName()),
+            "start_seconds", source.startSeconds() == null ? "" : source.startSeconds(),
+            "end_seconds", source.endSeconds() == null ? "" : source.endSeconds(),
+            "excerpt", safe(source.excerpt())
+        );
     }
 
     private String safe(String value) {

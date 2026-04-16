@@ -63,6 +63,14 @@ public class ToolPolicyService {
             true,
             true
         ),
+        ToolService.TOOL_RUN_COMMAND,
+        new ToolPolicy(
+            ToolService.TOOL_RUN_COMMAND,
+            "在受控工作目录中执行一次非交互式命令行命令，返回 exit code、stdout 和 stderr。",
+            true,
+            false,
+            true
+        ),
         ToolService.TOOL_PUBLISH_TO_VAULT_FS,
         new ToolPolicy(
             ToolService.TOOL_PUBLISH_TO_VAULT_FS,

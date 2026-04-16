@@ -154,6 +154,42 @@ public class UnifiedAgentService {
         return new AgentStreamRuntime(conversationId, activeSkills, bridge, agent, config);
     }
 
+    public AgentStreamRuntime createResumeStreamRuntime(
+        String conversationId,
+        Long folderId,
+        String videoBvid,
+        AgentResumeStreamRequest request
+    ) {
+        InterruptionMetadata interruption = pendingApprovalStore.get(conversationId)
+            .orElseThrow(() -> new BusinessException(
+                ErrorCode.NOT_FOUND_ERROR,
+                "当前会话没有待审批的 Agent 任务。",
+                HttpStatus.NOT_FOUND
+            ));
+
+        UnifiedAgentToolBridge bridge = new UnifiedAgentToolBridge(
+            toolService,
+            knowledgeBaseSearchService,
+            videoSummarySearchService,
+            agentScopeService,
+            videoMapper,
+            "",
+            folderId,
+            videoBvid
+        );
+        List<SkillListItemVO> activeSkills = listActiveSkills();
+        ReactAgent agent = buildAgent(
+            bridge,
+            activeSkills,
+            agentScopeService.describeScope(bridge.scopeMode(), bridge.folderId(), bridge.videoBvid())
+        );
+        RunnableConfig config = RunnableConfig.builder()
+            .threadId(buildAgentThreadId(conversationId, bridge))
+            .addHumanFeedback(buildFeedback(interruption, request.feedbacks()))
+            .build();
+        return new AgentStreamRuntime(conversationId, activeSkills, bridge, agent, config);
+    }
+
     public AgentExecutionResult resume(
         String conversationId,
         Long folderId,
@@ -384,7 +420,7 @@ public class UnifiedAgentService {
     ) {
         InterruptionMetadata.Builder builder = InterruptionMetadata.builder(interruption.node(), interruption.state());
         interruption.toolFeedbacks().forEach(toolFeedback -> {
-            if (!ToolService.TOOL_PUBLISH_TO_VAULT_FS.equals(toolFeedback.getName())) {
+            if (!ToolService.TOOL_WRITE_FILE.equals(toolFeedback.getName())) {
                 builder.addToolFeedback(toolFeedback);
                 return;
             }

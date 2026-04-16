@@ -2,6 +2,7 @@ package com.bin.bilibrain.service.tools;
 
 import com.bin.bilibrain.exception.BusinessException;
 import com.bin.bilibrain.exception.ErrorCode;
+import com.bin.bilibrain.exception.ToolApprovalRequiredException;
 import com.bin.bilibrain.mapper.ToolCallMapper;
 import com.bin.bilibrain.model.dto.tools.ToolCallRequest;
 import com.bin.bilibrain.model.entity.ToolCall;
@@ -31,8 +32,9 @@ public class ToolService {
     public static final String TOOL_VIEW_TEXT_FILE = "view_text_file";
     public static final String TOOL_WRITE_TEXT_FILE = "write_text_file";
     public static final String TOOL_INSERT_TEXT_FILE = "insert_text_file";
-    public static final String TOOL_PUBLISH_TO_VAULT_FS = "publish_to_vault_fs";
-    public static final String TOOL_RUN_COMMAND = "run_command";
+    public static final String TOOL_WRITE_FILE = "write_file";
+    public static final String TOOL_RUN_PROCESS = "run_process";
+    public static final String TOOL_RUN_SHELL_COMMAND = "run_shell_command";
     private static final String STATUS_SUCCESS = "SUCCESS";
     private static final String STATUS_FAILED = "FAILED";
 
@@ -50,7 +52,18 @@ public class ToolService {
     }
 
     public ToolCallResultVO callTool(ToolCallRequest request) {
+        return callTool(request, false);
+    }
+
+    public ToolCallResultVO callToolApproved(ToolCallRequest request) {
+        return callTool(request, true);
+    }
+
+    private ToolCallResultVO callTool(ToolCallRequest request, boolean approved) {
         toolPolicyService.validateCall(request);
+        if (!approved && toolPolicyService.requiresApproval(request.toolName())) {
+            throw new ToolApprovalRequiredException(request.toolName(), request.arguments());
+        }
         LocalDateTime now = LocalDateTime.now();
         try {
             Map<String, Object> result = execute(request);
@@ -94,13 +107,20 @@ public class ToolService {
                 requiredStringArg(request, "content"),
                 requiredIntArg(request, "line")
             );
-            case TOOL_RUN_COMMAND -> commandExecutionService.runCommand(
+            case TOOL_RUN_PROCESS -> commandExecutionService.runProcess(
+                request.workspaceId(),
+                requiredStringArg(request, "executable"),
+                stringListArg(request, "args"),
+                stringArg(request, "cwd", "."),
+                intArg(request, "timeout_seconds", null)
+            );
+            case TOOL_RUN_SHELL_COMMAND -> commandExecutionService.runShellCommand(
                 request.workspaceId(),
                 requiredStringArg(request, "command"),
                 stringArg(request, "cwd", "."),
                 intArg(request, "timeout_seconds", null)
             );
-            case TOOL_PUBLISH_TO_VAULT_FS -> vaultPublishingService.publishToVaultFs(
+            case TOOL_WRITE_FILE -> vaultPublishingService.publishToVaultFs(
                 requiredStringArg(request, "kind"),
                 requiredStringArg(request, "title"),
                 requiredStringArg(request, "content_markdown"),
@@ -201,6 +221,12 @@ public class ToolService {
             return list;
         }
         return Collections.singletonList(value);
+    }
+
+    private List<String> stringListArg(ToolCallRequest request, String key) {
+        return listArg(request, key).stream()
+            .map(value -> value == null ? "" : String.valueOf(value))
+            .toList();
     }
 
     private Map<String, Object> arguments(ToolCallRequest request) {

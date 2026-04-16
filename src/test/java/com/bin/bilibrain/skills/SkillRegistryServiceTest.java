@@ -3,6 +3,7 @@ package com.bin.bilibrain.skills;
 import com.alibaba.cloud.ai.graph.skills.registry.SkillRegistry;
 import com.alibaba.cloud.ai.graph.skills.registry.filesystem.FileSystemSkillRegistry;
 import com.bin.bilibrain.config.AppProperties;
+import com.bin.bilibrain.config.ProjectPathResolver;
 import com.bin.bilibrain.model.dto.skills.SkillCreateRequest;
 import com.bin.bilibrain.model.vo.skills.SkillDetailVO;
 import com.bin.bilibrain.model.vo.skills.SkillListItemVO;
@@ -36,7 +37,13 @@ class SkillRegistryServiceTest {
             .build();
         AppProperties appProperties = new AppProperties();
         appProperties.getStorage().setSkillsRoot(tempDir);
-        skillRegistryService = new SkillRegistryService(skillRegistry, skillActivationService, appProperties);
+        ProjectPathResolver projectPathResolver = new ProjectPathResolver(tempDir, tempDir);
+        skillRegistryService = new SkillRegistryService(
+            skillRegistry,
+            skillActivationService,
+            appProperties,
+            projectPathResolver
+        );
         when(skillActivationService.isActive("java-rag")).thenReturn(true);
         when(skillActivationService.isActive("workspace-agent")).thenReturn(false);
     }

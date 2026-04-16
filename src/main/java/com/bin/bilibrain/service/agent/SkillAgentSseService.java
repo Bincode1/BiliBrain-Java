@@ -22,6 +22,7 @@ import reactor.core.scheduler.Schedulers;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.Executor;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
@@ -166,20 +167,29 @@ public class SkillAgentSseService {
             request.scopeMode()
         );
         String resumingMessage = "正在恢复统一 Agent 执行";
+        UnifiedAgentService.AgentStreamRuntime runtime = unifiedAgentService.createResumeStreamRuntime(
+            conversation.id(),
+            conversation.folderId(),
+            conversation.videoBvid(),
+            request
+        );
+        LiveStreamState state = new LiveStreamState();
+        Flux<ServerSentEvent<Object>> liveEvents;
+        try {
+            liveEvents = runtime.agent().stream(Map.of(), runtime.config())
+                .doOnNext(state.lastOutputRef::set)
+                .concatMap(output -> emitLiveNodeOutput(runtime, output, state));
+        } catch (GraphRunnerException exception) {
+            throw new IllegalStateException("恢复统一 Agent 流式执行失败：" + exception.getMessage(), exception);
+        }
         return Flux.concat(
             Flux.just(
                 sseEventBuilder.conversation(false, conversation),
-                sseEventBuilder.status("resuming", resumingMessage)
+                sseEventBuilder.status("resuming", resumingMessage),
+                sseEventBuilder.skills(runtime.activeSkills())
             ),
-            Flux.defer(() -> {
-                AgentExecutionResult result = agentResumeService.resume(
-                    conversation.id(),
-                    conversation.folderId(),
-                    conversation.videoBvid(),
-                    request
-                );
-                return emitResult(conversation, result, new LiveStreamState(), true, true);
-            })
+            liveEvents,
+            Flux.defer(() -> finalizeResumeRuntime(conversation, runtime, state))
         );
     }
 
@@ -198,6 +208,23 @@ public class SkillAgentSseService {
             runtime.bridge()
         );
         return emitResult(conversation, result, state, false, false);
+    }
+
+    private Flux<ServerSentEvent<Object>> finalizeResumeRuntime(
+        ChatConversationVO conversation,
+        UnifiedAgentService.AgentStreamRuntime runtime,
+        LiveStreamState state
+    ) {
+        NodeOutput lastOutput = state.lastOutputRef.get();
+        if (lastOutput == null) {
+            throw new IllegalStateException("恢复统一 Agent 流式执行没有返回任何输出。");
+        }
+        AgentExecutionResult result = unifiedAgentService.adaptStreamResult(
+            conversation.id(),
+            lastOutput,
+            runtime.bridge()
+        );
+        return emitResult(conversation, result, state, false, true);
     }
 
     private Flux<ServerSentEvent<Object>> emitResult(
@@ -222,7 +249,7 @@ public class SkillAgentSseService {
             String waitingMessage = "工具调用等待人工确认";
             boolean publishApproval = result.approval() != null
                 && !result.approval().items().isEmpty()
-                && "publish_to_vault_fs".equals(result.approval().items().getFirst().toolName());
+                && "write_file".equals(result.approval().items().getFirst().toolName());
             String approvalPreview = publishApproval
                 ? (state.hasStreamedAnswer() ? state.streamedAnswer.toString() : "")
                 : (state.hasStreamedAnswer() ? state.streamedAnswer.toString() : waitingMessage);

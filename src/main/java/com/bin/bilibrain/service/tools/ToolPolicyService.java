@@ -63,18 +63,26 @@ public class ToolPolicyService {
             true,
             true
         ),
-        ToolService.TOOL_RUN_COMMAND,
+        ToolService.TOOL_RUN_PROCESS,
         new ToolPolicy(
-            ToolService.TOOL_RUN_COMMAND,
-            "在受控工作目录中执行一次非交互式命令行命令，返回 exit code、stdout 和 stderr。",
+            ToolService.TOOL_RUN_PROCESS,
+            "直接执行一个可执行程序及其参数，不经过 shell，返回 exit code、stdout 和 stderr。",
             true,
             false,
             true
         ),
-        ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+        ToolService.TOOL_RUN_SHELL_COMMAND,
         new ToolPolicy(
-            ToolService.TOOL_PUBLISH_TO_VAULT_FS,
-            "将整理好的学习内容发布到本地知识库或 Obsidian vault 目录。",
+            ToolService.TOOL_RUN_SHELL_COMMAND,
+            "执行一条 shell 命令字符串，适合管道、重定向等 shell 语法，返回 exit code、stdout 和 stderr。",
+            true,
+            false,
+            true
+        ),
+        ToolService.TOOL_WRITE_FILE,
+        new ToolPolicy(
+            ToolService.TOOL_WRITE_FILE,
+            "将整理好的文本内容写入本地文件。",
             true,
             false,
             true
@@ -129,7 +137,8 @@ public class ToolPolicyService {
         if (!StringUtils.hasText(toolName)) {
             throw new BusinessException(ErrorCode.PARAMS_ERROR, "tool_name 不能为空", HttpStatus.BAD_REQUEST);
         }
-        return toolName.trim().toLowerCase();
+        String normalized = toolName.trim().toLowerCase();
+        return normalized;
     }
 
     @Getter

@@ -1,6 +1,7 @@
 package com.bin.bilibrain.service.agent;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.bin.bilibrain.exception.ToolApprovalRequiredException;
 import com.bin.bilibrain.mapper.VideoMapper;
 import com.bin.bilibrain.model.entity.Video;
 import com.bin.bilibrain.model.dto.tools.ToolCallRequest;
@@ -17,6 +18,7 @@ import org.springframework.util.StringUtils;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 public class UnifiedAgentToolBridge {
@@ -181,8 +183,8 @@ public class UnifiedAgentToolBridge {
         }
     }
 
-    @Tool(name = ToolService.TOOL_PUBLISH_TO_VAULT_FS, description = "将整理好的 Markdown 内容发布到本地知识库或 Obsidian vault")
-    public Map<String, Object> publishToVaultFs(
+    @Tool(name = ToolService.TOOL_WRITE_FILE, description = "将整理好的 Markdown 内容写入本地文件。适合在用户明确要求导出 Markdown 或写文件时使用。")
+    public Map<String, Object> writeFile(
         @ToolParam(description = "发布类型，可选值：video_note、folder_guide、review_plan；如不确定可留空") String kind,
         @ToolParam(description = "文档标题") String title,
         @ToolParam(description = "要发布的 Markdown 内容") String contentMarkdown
@@ -191,10 +193,10 @@ public class UnifiedAgentToolBridge {
             "kind", resolvePublishKind(kind),
             "title", title == null ? "" : title
         );
-        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_PUBLISH_TO_VAULT_FS, summary));
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_WRITE_FILE, summary));
         try {
-            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(
-                ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+            ToolCallResultVO result = toolService.callToolApproved(new ToolCallRequest(
+                ToolService.TOOL_WRITE_FILE,
                 null,
                 null,
                 Map.of(
@@ -207,49 +209,154 @@ public class UnifiedAgentToolBridge {
                 )
             ));
             toolEvents.add(AgentToolEventVO.finish(
-                ToolService.TOOL_PUBLISH_TO_VAULT_FS,
+                ToolService.TOOL_WRITE_FILE,
                 summary,
                 result.result()
             ));
             return result.result();
+        } catch (ToolApprovalRequiredException e) {
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_WRITE_FILE,
+                summary,
+                Map.of(
+                    "status", "approval_required",
+                    "tool", e.getToolName(),
+                    "message", "此次写文件操作需要人工审批后才能执行。",
+                    "prompt", "请等待用户审批后重试。"
+                )
+            ));
+            return Map.of(
+                "status", "approval_required",
+                "tool", e.getToolName(),
+                "message", "此次写文件操作需要人工审批后才能执行。"
+            );
         } catch (RuntimeException exception) {
-            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_PUBLISH_TO_VAULT_FS, summary, exception.getMessage()));
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_WRITE_FILE, summary, exception.getMessage()));
             throw exception;
         }
     }
 
-    @Tool(name = ToolService.TOOL_RUN_COMMAND, description = "在受控工作目录中执行一次非交互式命令行命令。适合调用已安装的 CLI、检查环境或处理临时产物；需要人工审批后才会真正执行。")
-    public Map<String, Object> runCommand(
-        @ToolParam(description = "要执行的命令，例如 python -V 或 dir") String command,
+    @Tool(name = ToolService.TOOL_RUN_PROCESS, description = "直接执行一个本地程序及参数，不经过 shell。适合绝大多数 CLI 调用，例如 obsidian、python、git；需要人工审批后才会真正执行。")
+    public Map<String, Object> runProcess(
+        @ToolParam(description = "要执行的程序名，例如 obsidian、python、git") String executable,
+        @ToolParam(description = "传给 executable 的参数数组；长文本、带空格内容、Markdown 等应放在这里") List<String> args,
         @ToolParam(description = "相对工作目录，默认 .；只能位于工具工作区内") String cwd,
         @ToolParam(description = "超时时间，单位秒，范围 1-120，默认 30") Integer timeoutSeconds
     ) {
-        Map<String, Object> summary = Map.of(
-            "command", command == null ? "" : command,
-            "cwd", StringUtils.hasText(cwd) ? cwd : "."
-        );
-        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_RUN_COMMAND, summary));
+        String normalizedExecutable = StringUtils.hasText(executable) ? executable.trim() : "";
+        List<String> normalizedArgs = args == null ? List.of() : args.stream()
+            .map(value -> value == null ? "" : value)
+            .toList();
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("executable", normalizedExecutable);
+        summary.put("args", normalizedArgs);
+        summary.put("cwd", StringUtils.hasText(cwd) ? cwd : ".");
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_RUN_PROCESS, summary));
         try {
-            ToolCallResultVO result = toolService.callTool(new ToolCallRequest(
-                ToolService.TOOL_RUN_COMMAND,
+            ToolCallResultVO result = toolService.callToolApproved(new ToolCallRequest(
+                ToolService.TOOL_RUN_PROCESS,
                 null,
                 null,
-                Map.of(
-                    "command", command == null ? "" : command,
-                    "cwd", StringUtils.hasText(cwd) ? cwd : ".",
-                    "timeout_seconds", timeoutSeconds == null ? 30 : timeoutSeconds
-                )
+                buildRunProcessArguments(normalizedExecutable, normalizedArgs, cwd, timeoutSeconds)
             ));
             toolEvents.add(AgentToolEventVO.finish(
-                ToolService.TOOL_RUN_COMMAND,
+                ToolService.TOOL_RUN_PROCESS,
                 summary,
                 result.result()
             ));
             return result.result();
+        } catch (ToolApprovalRequiredException e) {
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_RUN_PROCESS,
+                summary,
+                Map.of(
+                    "status", "approval_required",
+                    "tool", e.getToolName(),
+                    "message", "此命令需要人工审批后才能执行。",
+                    "prompt", "请等待用户审批后重试。"
+                )
+            ));
+            return Map.of(
+                "status", "approval_required",
+                "tool", e.getToolName(),
+                "message", "此命令需要人工审批后才能执行。"
+            );
         } catch (RuntimeException exception) {
-            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_RUN_COMMAND, summary, exception.getMessage()));
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_RUN_PROCESS, summary, exception.getMessage()));
             throw exception;
         }
+    }
+
+    @Tool(name = ToolService.TOOL_RUN_SHELL_COMMAND, description = "执行一条本地 shell 命令字符串。只在确实需要管道、重定向、多个 shell 操作符时使用；需要人工审批后才会真正执行。")
+    public Map<String, Object> runShellCommand(
+        @ToolParam(description = "完整 shell 命令字符串，例如 git status | findstr modified") String command,
+        @ToolParam(description = "相对工作目录，默认 .；只能位于工具工作区内") String cwd,
+        @ToolParam(description = "超时时间，单位秒，范围 1-120，默认 30") Integer timeoutSeconds
+    ) {
+        String normalizedCommand = StringUtils.hasText(command) ? command.trim() : "";
+        Map<String, Object> summary = new LinkedHashMap<>();
+        summary.put("command", normalizedCommand);
+        summary.put("cwd", StringUtils.hasText(cwd) ? cwd : ".");
+        toolEvents.add(AgentToolEventVO.start(ToolService.TOOL_RUN_SHELL_COMMAND, summary));
+        try {
+            ToolCallResultVO result = toolService.callToolApproved(new ToolCallRequest(
+                ToolService.TOOL_RUN_SHELL_COMMAND,
+                null,
+                null,
+                buildRunShellCommandArguments(normalizedCommand, cwd, timeoutSeconds)
+            ));
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_RUN_SHELL_COMMAND,
+                summary,
+                result.result()
+            ));
+            return result.result();
+        } catch (ToolApprovalRequiredException e) {
+            toolEvents.add(AgentToolEventVO.finish(
+                ToolService.TOOL_RUN_SHELL_COMMAND,
+                summary,
+                Map.of(
+                    "status", "approval_required",
+                    "tool", e.getToolName(),
+                    "message", "此命令需要人工审批后才能执行。",
+                    "prompt", "请等待用户审批后重试。"
+                )
+            ));
+            return Map.of(
+                "status", "approval_required",
+                "tool", e.getToolName(),
+                "message", "此命令需要人工审批后才能执行。"
+            );
+        } catch (RuntimeException exception) {
+            toolEvents.add(AgentToolEventVO.failed(ToolService.TOOL_RUN_SHELL_COMMAND, summary, exception.getMessage()));
+            throw exception;
+        }
+    }
+
+    private Map<String, Object> buildRunProcessArguments(
+        String executable,
+        List<String> args,
+        String cwd,
+        Integer timeoutSeconds
+    ) {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("executable", executable);
+        arguments.put("args", args);
+        arguments.put("cwd", StringUtils.hasText(cwd) ? cwd : ".");
+        arguments.put("timeout_seconds", timeoutSeconds == null ? 30 : timeoutSeconds);
+        return arguments;
+    }
+
+    private Map<String, Object> buildRunShellCommandArguments(
+        String command,
+        String cwd,
+        Integer timeoutSeconds
+    ) {
+        Map<String, Object> arguments = new LinkedHashMap<>();
+        arguments.put("command", command);
+        arguments.put("cwd", StringUtils.hasText(cwd) ? cwd : ".");
+        arguments.put("timeout_seconds", timeoutSeconds == null ? 30 : timeoutSeconds);
+        return arguments;
     }
 
     public List<AgentToolEventVO> toolEvents() {

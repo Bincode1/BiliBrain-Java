@@ -59,7 +59,7 @@ public class VaultPublishingService {
             Files.createDirectories(targetDirectory);
             Files.writeString(targetPath, markdown, StandardCharsets.UTF_8);
         } catch (IOException exception) {
-            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "写入本地知识库失败。", HttpStatus.INTERNAL_SERVER_ERROR);
+            throw new BusinessException(ErrorCode.SYSTEM_ERROR, "写入本地文件失败。", HttpStatus.INTERNAL_SERVER_ERROR);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -131,13 +131,13 @@ public class VaultPublishingService {
             case "video_note" -> vaultRoot.resolve(appProperties.getPublishing().getVideoNotesDir()).normalize();
             case "folder_guide" -> vaultRoot.resolve(appProperties.getPublishing().getFolderGuidesDir()).normalize();
             case "review_plan" -> vaultRoot.resolve(appProperties.getPublishing().getReviewPlansDir()).normalize();
-            default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的发布 kind。", HttpStatus.BAD_REQUEST);
+            default -> throw new BusinessException(ErrorCode.PARAMS_ERROR, "不支持的文件类型。", HttpStatus.BAD_REQUEST);
         };
     }
 
     private void ensureWithinVault(Path vaultRoot, Path path) {
         if (!path.startsWith(vaultRoot)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的 vault 路径。", HttpStatus.BAD_REQUEST);
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "非法的文件路径。", HttpStatus.BAD_REQUEST);
         }
     }
 

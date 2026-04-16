@@ -13,6 +13,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -28,7 +29,29 @@ public class CommandExecutionService {
     private static final int MAX_TIMEOUT_SECONDS = 120;
     private static final int MAX_OUTPUT_CHARS = 12_000;
     private static final Pattern DANGEROUS_COMMAND_PATTERN = Pattern.compile(
-        "(?i)(?:^|\\s)(?:rm\\s+-rf|rd\\s+/s|del\\s+/s|format\\b|shutdown\\b|reboot\\b|mkfs\\b|diskpart\\b|poweroff\\b)"
+        "(?i)(?:^|\\s)(?:" +
+        "rm\\s+-rf\\s+/|" +
+        "rm\\s+-rf\\s+/\\w|" +
+        "rd\\s+/s\\s*/q|" +
+        "deltree\\s|" +
+        "format\\s+[a-z]:|" +
+        "shutdown\\s+/[srf]|" +
+        "shutdown\\s+-s\\s*-t\\s*0|" +
+        "reboot\\b|" +
+        "poweroff\\b|" +
+        "init\\s+0|" +
+        "systemctl\\s+poweroff|" +
+        "mkfs\\b|" +
+        "diskpart\\b|" +
+        "fdisk\\b|" +
+        "curl\\s+.*\\|\\s*bash|" +
+        "wget\\s+.*\\|\\s*bash|" +
+        "fetch\\s+.*\\|\\s*bash|" +
+        ">\\s*/etc/|" +
+        ">\\s*/usr/|" +
+        "sudo\\s+rm\\s+-rf|" +
+        "pkexec\\s+rm\\s+-rf" +
+        ")"
     );
 
     private final WorkspaceService workspaceService;
@@ -45,23 +68,74 @@ public class CommandExecutionService {
         this.appProperties = appProperties;
     }
 
-    public Map<String, Object> runCommand(Long workspaceId, String command, String cwd, Integer timeoutSeconds) {
-        String normalizedCommand = normalizeCommand(command);
+    public Map<String, Object> runProcess(
+        Long workspaceId,
+        String executable,
+        List<String> args,
+        String cwd,
+        Integer timeoutSeconds
+    ) {
+        if (!StringUtils.hasText(executable)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "executable 不能为空", HttpStatus.BAD_REQUEST);
+        }
+        List<String> normalizedArgs = normalizeArgs(args);
+        return runExecutionTarget(
+            workspaceId,
+            new ExecutionTarget(
+                false,
+                executable.trim(),
+                normalizedArgs,
+                buildProcessArgs(executable.trim(), normalizedArgs),
+                buildDisplayCommand(executable.trim(), normalizedArgs)
+            ),
+            cwd,
+            timeoutSeconds
+        );
+    }
+
+    public Map<String, Object> runShellCommand(Long workspaceId, String command, String cwd, Integer timeoutSeconds) {
+        if (!StringUtils.hasText(command)) {
+            throw new BusinessException(ErrorCode.PARAMS_ERROR, "command 不能为空", HttpStatus.BAD_REQUEST);
+        }
+        String normalizedCommand = command.trim();
+        return runExecutionTarget(
+            workspaceId,
+            new ExecutionTarget(
+                true,
+                null,
+                List.of(),
+                buildShellCommand(normalizedCommand),
+                normalizedCommand
+            ),
+            cwd,
+            timeoutSeconds
+        );
+    }
+
+    private Map<String, Object> runExecutionTarget(
+        Long workspaceId,
+        ExecutionTarget executionTarget,
+        String cwd,
+        Integer timeoutSeconds
+    ) {
         int effectiveTimeoutSeconds = normalizeTimeout(timeoutSeconds);
         Path workingDirectory = resolveWorkingDirectory(workspaceId, cwd);
-        ensureSafeCommand(normalizedCommand);
+        ensureSafeCommand(executionTarget);
 
         long startedAt = System.nanoTime();
         Process process;
         try {
-            ProcessBuilder builder = new ProcessBuilder(buildShellCommand(normalizedCommand));
+            ProcessBuilder builder = new ProcessBuilder(executionTarget.processArgs());
             builder.directory(workingDirectory.toFile());
             process = builder.start();
         } catch (IOException exception) {
-            throw new BusinessException(
-                ErrorCode.SYSTEM_ERROR,
-                "启动命令执行失败。",
-                HttpStatus.INTERNAL_SERVER_ERROR
+            return buildLaunchFailureResult(
+                workspaceId,
+                workingDirectory,
+                effectiveTimeoutSeconds,
+                executionTarget,
+                exception,
+                startedAt
             );
         }
 
@@ -85,11 +159,17 @@ public class CommandExecutionService {
             long elapsedMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
 
             Map<String, Object> result = new LinkedHashMap<>();
-            result.put("command", normalizedCommand);
+            result.put("command", executionTarget.displayCommand());
+            result.put("execution_mode", executionTarget.shell() ? "shell" : "direct");
+            result.put("shell_wrapped", executionTarget.shell());
+            result.put("executable", executionTarget.executable());
+            result.put("args", executionTarget.originalArgs());
             result.put("cwd", workingDirectory.toString());
             result.put("workspace_id", workspaceId);
             result.put("timeout_seconds", effectiveTimeoutSeconds);
             result.put("timed_out", !completed);
+            result.put("failure_type", !completed ? "timeout" : process.exitValue() == 0 ? "" : "non_zero_exit");
+            result.put("error_message", !completed ? "命令执行超时并已被终止。" : "");
             result.put("exit_code", completed ? process.exitValue() : -1);
             result.put("success", completed && process.exitValue() == 0);
             result.put("stdout", truncate(stdout));
@@ -107,6 +187,38 @@ public class CommandExecutionService {
                 HttpStatus.INTERNAL_SERVER_ERROR
             );
         }
+    }
+
+    private Map<String, Object> buildLaunchFailureResult(
+        Long workspaceId,
+        Path workingDirectory,
+        int timeoutSeconds,
+        ExecutionTarget executionTarget,
+        IOException exception,
+        long startedAt
+    ) {
+        long elapsedMs = Duration.ofNanos(System.nanoTime() - startedAt).toMillis();
+        String stderr = StringUtils.hasText(exception.getMessage()) ? exception.getMessage() : exception.getClass().getSimpleName();
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("command", executionTarget.displayCommand());
+        result.put("execution_mode", executionTarget.shell() ? "shell" : "direct");
+        result.put("shell_wrapped", executionTarget.shell());
+        result.put("executable", executionTarget.executable());
+        result.put("args", executionTarget.originalArgs());
+        result.put("cwd", workingDirectory.toString());
+        result.put("workspace_id", workspaceId);
+        result.put("timeout_seconds", timeoutSeconds);
+        result.put("timed_out", false);
+        result.put("failure_type", "launch_error");
+        result.put("error_message", "命令启动失败。");
+        result.put("exit_code", null);
+        result.put("success", false);
+        result.put("stdout", "");
+        result.put("stderr", truncate(stderr));
+        result.put("stdout_truncated", false);
+        result.put("stderr_truncated", stderr.length() > MAX_OUTPUT_CHARS);
+        result.put("elapsed_ms", elapsedMs);
+        return result;
     }
 
     private Path resolveWorkingDirectory(Long workspaceId, String cwd) {
@@ -128,15 +240,30 @@ public class CommandExecutionService {
         return workingDirectory;
     }
 
-    private String normalizeCommand(String command) {
-        if (!StringUtils.hasText(command)) {
-            throw new BusinessException(ErrorCode.PARAMS_ERROR, "command 不能为空", HttpStatus.BAD_REQUEST);
+    private List<String> normalizeArgs(List<String> args) {
+        if (args == null || args.isEmpty()) {
+            return List.of();
         }
-        return command.trim();
+        List<String> normalizedArgs = new ArrayList<>();
+        for (Object arg : args) {
+            if (arg == null) {
+                normalizedArgs.add("");
+                continue;
+            }
+            normalizedArgs.add(String.valueOf(arg));
+        }
+        return List.copyOf(normalizedArgs);
     }
 
-    private void ensureSafeCommand(String command) {
-        if (DANGEROUS_COMMAND_PATTERN.matcher(command).find()) {
+    private List<String> buildProcessArgs(String executable, List<String> args) {
+        List<String> processArgs = new ArrayList<>();
+        processArgs.add(executable);
+        processArgs.addAll(args);
+        return List.copyOf(processArgs);
+    }
+
+    private void ensureSafeCommand(ExecutionTarget executionTarget) {
+        if (DANGEROUS_COMMAND_PATTERN.matcher(executionTarget.displayCommand()).find()) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, "当前命令过于危险，已被策略拦截。", HttpStatus.BAD_REQUEST);
         }
     }
@@ -172,6 +299,28 @@ public class CommandExecutionService {
         return List.of("/bin/sh", "-lc", command);
     }
 
+    private String buildDisplayCommand(String executable, List<String> args) {
+        StringBuilder builder = new StringBuilder(executable);
+        for (String arg : args) {
+            builder.append(' ').append(quoteForDisplay(arg));
+        }
+        return builder.toString();
+    }
+
+    private String quoteForDisplay(String value) {
+        if (value == null) {
+            return "\"\"";
+        }
+        if (value.isEmpty()) {
+            return "\"\"";
+        }
+        boolean needsQuotes = value.chars().anyMatch(ch -> Character.isWhitespace(ch) || ch == '"' || ch == '\'');
+        if (!needsQuotes) {
+            return value;
+        }
+        return "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\"";
+    }
+
     private boolean isWindows() {
         return System.getProperty("os.name", "").toLowerCase().contains("win");
     }
@@ -200,5 +349,14 @@ public class CommandExecutionService {
             return text == null ? "" : text;
         }
         return text.substring(0, MAX_OUTPUT_CHARS) + "\n...[truncated]";
+    }
+
+    private record ExecutionTarget(
+        boolean shell,
+        String executable,
+        List<String> originalArgs,
+        List<String> processArgs,
+        String displayCommand
+    ) {
     }
 }

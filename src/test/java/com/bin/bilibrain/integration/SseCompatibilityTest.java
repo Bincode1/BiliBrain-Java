@@ -56,6 +56,7 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
                     18.0,
                     "这里解释了知识库检索的关键步骤。"
                 )),
+                List.of(),
                 List.of(new SkillListItemVO("java-rag", "Java RAG", "skills/java-rag/SKILL.md", true)),
                 List.of(),
                 List.of(),
@@ -87,6 +88,7 @@ class SseCompatibilityTest extends AbstractMySqlIntegrationTest {
         assertThat(content).contains("event:answer_normalized");
         assertThat(content).contains("event:skills");
         assertThat(content).contains("event:done");
+        assertThat(content).doesNotContain("event:citation_segments");
         assertThat(content).contains("\"route\":\"agent\"");
         assertThat(content).contains("\"mode\":\"agent\"");
 

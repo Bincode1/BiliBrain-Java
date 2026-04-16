@@ -11,4 +11,6 @@ public interface BilibiliMetadataClient {
     BilibiliSearchResult searchVideos(String keyword, int page, int pageSize);
 
     BilibiliAudioTrack downloadAudioTrack(String bvid, Path outputPath);
+
+    void addToFavorite(String bvid, long mediaId, int action);
 }

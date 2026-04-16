@@ -434,6 +434,84 @@ public class DefaultBilibiliMetadataClient implements BilibiliMetadataClient {
         }
     }
 
+    private Map<String, Object> postJson(String url, Map<String, Object> params) {
+        try {
+            Map<?, ?> payload = bilibiliWebClient
+                .post()
+                .uri(url)
+                .contentType(org.springframework.http.MediaType.APPLICATION_FORM_URLENCODED)
+                .bodyValue(buildFormBody(params))
+                .headers(headers -> {
+                    headers.set("User-Agent", USER_AGENT);
+                    headers.set("Referer", "https://www.bilibili.com/");
+                    headers.set("Origin", "https://www.bilibili.com");
+                    headers.set("Accept", "application/json, text/plain, */*");
+                    String cookieHeader = buildCookieHeader();
+                    if (StringUtils.hasText(cookieHeader)) {
+                        headers.set("Cookie", cookieHeader);
+                    }
+                })
+                .retrieve()
+                .onStatus(
+                    status -> status.value() == 429 || status.is5xxServerError(),
+                    clientResponse -> clientResponse.bodyToMono(String.class)
+                        .defaultIfEmpty("")
+                        .map(body -> new RetryableBilibiliHttpException(
+                            URI.create(url), clientResponse.statusCode().value(), body))
+                )
+                .onStatus(
+                    org.springframework.http.HttpStatusCode::isError,
+                    clientResponse -> clientResponse.bodyToMono(String.class)
+                        .defaultIfEmpty("")
+                        .map(body -> new BilibiliClientException(
+                            "POST 请求 Bilibili 失败: uri=%s, status=%s, body=%s"
+                                .formatted(url, clientResponse.statusCode().value(), body)
+                        ))
+                )
+                .bodyToMono(Map.class)
+                .timeout(requestTimeout)
+                .block();
+
+            if (payload == null) {
+                throw new BilibiliClientException("Bilibili 返回空响应。");
+            }
+            long code = asLong(payload.get("code"));
+            if (code != 0L) {
+                throw new BilibiliClientException(
+                    StringUtils.hasText(asString(payload.get("message")))
+                        ? asString(payload.get("message"))
+                        : "Bilibili API 返回失败。"
+                );
+            }
+            @SuppressWarnings("unchecked")
+            Map<String, Object> castPayload = (Map<String, Object>) payload;
+            return castPayload;
+        } catch (BilibiliClientException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new BilibiliClientException("POST 请求 Bilibili 失败。", exception);
+        }
+    }
+
+    private String buildFormBody(Map<String, Object> params) {
+        return params.entrySet().stream()
+            .sorted(Map.Entry.comparingByKey())
+            .map(entry -> urlEncode(entry.getKey()) + "=" + urlEncode(asString(entry.getValue())))
+            .reduce((left, right) -> left + "&" + right)
+            .orElse("");
+    }
+
+    @Override
+    public void addToFavorite(String bvid, long mediaId, int action) {
+        Map<String, Object> params = signedParams(Map.of(
+            "bvid", bvid,
+            "media_id", mediaId,
+            "action", action
+        ));
+        params.put("csrf", bilibiliCredentialManager.loadCredential().values().get("bili_jct"));
+        postJson("https://api.bilibili.com/x/v2/fav/action", params);
+    }
+
     private Retry buildRetrySpec(String operation, URI uri) {
         return Retry.backoff(requestRetries, retryBackoff)
             .filter(this::isRetryable)

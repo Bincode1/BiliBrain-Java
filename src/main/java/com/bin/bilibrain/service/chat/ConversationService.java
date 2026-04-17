@@ -381,7 +381,6 @@ public class ConversationService {
             message.getConversationId(),
             message.getRole(),
             message.getContent(),
-            safeJson(message.getSourcesJson()),
             readList(message.getSourcesJson(), ChatSourceVO.class),
             readList(message.getCitationSegmentsJson(), ChatCitationSegmentVO.class),
             blankToEmpty(message.getAnswerMode()),

@@ -43,9 +43,7 @@ public class SseEventBuilder {
     ) {
         return event("answer_normalized", Map.of(
             "route", result.route(),
-            "route_mode", result.route(),
             "mode", result.mode(),
-            "answer_mode", result.mode(),
             "sources", result.sources(),
             "citation_segments", result.citationSegments(),
             "message", messageMetadata(message),
@@ -93,11 +91,11 @@ public class SseEventBuilder {
     }
 
     public ServerSentEvent<Object> route(String route) {
-        return event("route", Map.of("route", route, "route_mode", route));
+        return event("route", Map.of("route", route));
     }
 
     public ServerSentEvent<Object> mode(String mode) {
-        return event("mode", Map.of("mode", mode, "answer_mode", mode));
+        return event("mode", Map.of("mode", mode));
     }
 
     public ServerSentEvent<Object> skills(List<SkillListItemVO> activeSkills) {

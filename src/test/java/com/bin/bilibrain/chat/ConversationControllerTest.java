@@ -92,8 +92,8 @@ class ConversationControllerTest {
     @Test
     void getHistoryReturnsMessageList() throws Exception {
         when(conversationService.getHistory("conv-5")).thenReturn(List.of(
-            new ChatMessageVO(1L, "conv-5", "USER", "你好", "[]", "", "", "2026-04-12T12:03:00"),
-            new ChatMessageVO(2L, "conv-5", "ASSISTANT", "你好，这里是聊天壳。", "[]", "rag", "knowledge_base", "2026-04-12T12:03:05")
+            new ChatMessageVO(1L, "conv-5", "USER", "你好", "", "", "2026-04-12T12:03:00"),
+            new ChatMessageVO(2L, "conv-5", "ASSISTANT", "你好，这里是聊天壳。", "rag", "knowledge_base", "2026-04-12T12:03:05")
         ));
 
         mockMvc.perform(get("/api/chat/history").queryParam("conversation_id", "conv-5"))

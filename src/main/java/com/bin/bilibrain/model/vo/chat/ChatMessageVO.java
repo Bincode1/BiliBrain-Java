@@ -15,7 +15,6 @@ public record ChatMessageVO(
     String conversationId,
     String role,
     String content,
-    String sourcesJson,
     List<ChatSourceVO> sources,
     List<ChatCitationSegmentVO> citationSegments,
     String answerMode,
@@ -33,7 +32,6 @@ public record ChatMessageVO(
         String conversationId,
         String role,
         String content,
-        String sourcesJson,
         String answerMode,
         String routeMode,
         String createdAt
@@ -43,7 +41,6 @@ public record ChatMessageVO(
             conversationId,
             role,
             content,
-            sourcesJson,
             List.of(),
             List.of(),
             answerMode,

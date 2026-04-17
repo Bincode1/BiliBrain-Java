@@ -65,6 +65,20 @@ BiliBrain Java 是一个基于 `Spring Boot 3 + Spring AI Alibaba + MyBatis-Plus
 - 支持审批中断恢复
 - 支持 `write_file` 这类需要人工确认的工具调用
 
+## 界面预览
+
+### 收藏夹工作台
+
+![收藏夹工作台](./docs/images/library-workspace.png)
+
+### Agent 对话界面
+
+![Agent 对话界面](./docs/images/chat-agent.png)
+
+### Skills 技能中心
+
+![Skills 技能中心](./docs/images/skills-center.png)
+
 ## 技术栈
 
 | 类别 | 方案 |

@@ -103,3 +103,7 @@ workspaces/
 # JVM / test crash dumps
 hs_err_pid*
 replay_pid*
+
+# Local SSE test artifacts
+/sse-citation-test.txt
+/sse-inline-citation-test.txt

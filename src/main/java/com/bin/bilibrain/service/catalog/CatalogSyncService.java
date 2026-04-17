@@ -15,7 +15,6 @@ import com.bin.bilibrain.model.vo.auth.AuthSessionVO;
 import com.bin.bilibrain.model.vo.catalog.CatalogStatsResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderSyncResponse;
 import com.bin.bilibrain.model.vo.catalog.FolderVideoSyncResponse;
-import com.bin.bilibrain.model.vo.catalog.SyncErrorItem;
 import com.bin.bilibrain.service.auth.AuthService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -23,7 +22,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
-import java.util.ArrayList;
 import java.util.List;
 
 @Service
@@ -73,30 +71,21 @@ public class CatalogSyncService {
             List<BilibiliVideoMetadata> remoteVideos = bilibiliMetadataClient.listFolderVideos(folderId);
             int newVideos = 0;
             int updatedVideos = 0;
-            int failedVideos = 0;
-            List<SyncErrorItem> errors = new ArrayList<>();
             for (BilibiliVideoMetadata remoteVideo : remoteVideos) {
-                try {
-                    if (upsertVideo(folderId, remoteVideo)) {
-                        newVideos += 1;
-                    } else {
-                        updatedVideos += 1;
-                    }
-                } catch (Exception exception) {
-                    failedVideos += 1;
-                    errors.add(new SyncErrorItem(remoteVideo.bvid(), remoteVideo.title(), exception.getMessage()));
+                if (upsertVideo(folderId, remoteVideo)) {
+                    newVideos += 1;
+                } else {
+                    updatedVideos += 1;
                 }
             }
 
-            List<String> logs = new ArrayList<>();
-            logs.add("发现 " + remoteVideos.size() + " 个视频。");
-            logs.add("新增 " + newVideos + " 个视频，更新 " + updatedVideos + " 个视频元数据。");
-            logs.add("同步只刷新元数据，真正花钱的步骤是右侧手动开始处理。");
-            if (failedVideos > 0) {
-                logs.add("失败 " + failedVideos + " 个视频，请查看 errors。");
-            }
+            List<String> logs = List.of(
+                "发现 " + remoteVideos.size() + " 个视频。",
+                "新增 " + newVideos + " 个视频，更新 " + updatedVideos + " 个视频元数据。",
+                "同步只刷新元数据，真正花钱的步骤是右侧手动开始处理。"
+            );
             catalogCacheService.markFolderVideosRefreshed(folderId);
-            return new FolderVideoSyncResponse(folder.getTitle(), failedVideos, logs, errors, currentStats());
+            return new FolderVideoSyncResponse(folder.getTitle(), 0, logs, List.of(), currentStats());
         } catch (BilibiliClientException exception) {
             throw new BusinessException(ErrorCode.OPERATION_ERROR, exception.getMessage(), HttpStatus.BAD_GATEWAY);
         }

@@ -54,12 +54,8 @@ public class AuthService {
         if (credential.isEmpty()) {
             return cacheSession(new AuthSessionVO(false, null, null));
         }
-        try {
-            BilibiliSessionPayload payload = bilibiliAuthClient.fetchSession(credential);
-            return cacheSession(new AuthSessionVO(payload.loggedIn(), payload.userName(), payload.uid()));
-        } catch (Exception exception) {
-            return cacheSession(new AuthSessionVO(false, null, null));
-        }
+        BilibiliSessionPayload payload = bilibiliAuthClient.fetchSession(credential);
+        return cacheSession(new AuthSessionVO(payload.loggedIn(), payload.userName(), payload.uid()));
     }
 
     private AuthSessionVO cacheSession(AuthSessionVO session) {
